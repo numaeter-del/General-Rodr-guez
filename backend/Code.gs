@@ -28,32 +28,42 @@ const PERFILES = ['Carga', 'Análisis'];
 const VINCULOS = ['Titular', 'Destinatario', 'Inquilino', 'Familiar'];
 const PARENTESCOS = ['Hijo/a', 'Esposo/a', 'Hermano/a', 'Padre/Madre', 'Otro'];
 
-const COLUMNAS_REGISTROS = [
-  'ID', 'Fecha de carga', 'Secretaría', 'Usuario',
-  'Apellido', 'Nombre', 'DNI', 'CUIT/CUIL',
-  'Teléfono celular', 'Mail', 'Calle', 'Número',
-  'Vínculo', 'Parentesco', 'Última edición', 'Editado por',
-];
-const COLUMNAS_USUARIOS = ['Usuario', 'Nombre', 'Perfil', 'Secretaría', 'Activo', 'Salt', 'Hash', 'Creado'];
+const L_ = 'A-Za-zÁÉÍÓÚÜÑáéíóúüñ';
+const reNombre_ = new RegExp(`^[${L_}][${L_}' ]{1,59}$`);
 
-/* Campos del formulario: [clave, etiqueta, validador]. Mismas reglas que el frontend. */
+/*
+ * Campos del formulario (mismas reglas que el frontend, assets/app.js).
+ *  clave: nombre en la API · columna: encabezado en la hoja · ok: validador
+ *  opcional: puede quedar vacío sin aviso · texto: false para listas (se guardan sin ' inicial)
+ *  noEsDato: no cuenta para decidir si el formulario está vacío
+ */
 const CAMPOS = [
-  ['apellido', 'Apellido', v => /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ' ]{2,60}$/.test(v)],
-  ['nombre', 'Nombre', v => /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ' ]{2,60}$/.test(v)],
-  ['dni', 'DNI', v => /^[1-9]\d{6,7}$/.test(v)],
-  ['cuit', 'CUIT/CUIL', v => cuitValido_(v)],
-  ['celular', 'Teléfono celular', v => /^(11\d{8}|[23]\d{9})$/.test(v)],
-  ['mail', 'Mail', v => /^[A-Za-z0-9](?:[A-Za-z0-9._%+-]{0,62}[A-Za-z0-9_%+-])?@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*\.[A-Za-z]{2,}$/.test(v) && v.indexOf('..') < 0],
-  ['calle', 'Calle', v => /^(\d+ )?[A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-zÁÉÍÓÚÜÑáéíóúüñ.' ]{1,79}$/.test(v)],
-  ['numero', 'Número', v => v === 'S/N' || /^[1-9]\d{0,5}$/.test(v)],
-  ['vinculo', 'A quién corresponde', v => VINCULOS.indexOf(v) >= 0],
-  ['parentesco', 'Parentesco', v => PARENTESCOS.indexOf(v) >= 0],
+  { clave: 'apellido', columna: 'Apellido', ok: v => reNombre_.test(v) },
+  { clave: 'nombre', columna: 'Nombre', ok: v => reNombre_.test(v) },
+  { clave: 'dni', columna: 'DNI', ok: v => /^[1-9]\d{6,7}$/.test(v) },
+  { clave: 'cuit', columna: 'CUIT/CUIL', ok: v => cuitValido_(v) },
+  { clave: 'celular', columna: 'Teléfono celular', ok: v => /^(11\d{8}|[23]\d{9})$/.test(v) },
+  { clave: 'mail', columna: 'Mail', ok: v => /^[a-z0-9](?:[a-z0-9._%+-]{0,62}[a-z0-9_%+-])?@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/.test(v) && v.indexOf('..') < 0 },
+  { clave: 'calle', columna: 'Calle', ok: v => new RegExp(`^(\\d+ )?[${L_}][${L_}.' ]{1,79}$`).test(v) },
+  { clave: 'numero', columna: 'Número', ok: v => v === 'S/N' || /^[1-9]\d{0,5}$/.test(v) },
+  { clave: 'piso', columna: 'Piso/Depto', opcional: true, ok: v => /^[A-ZÑ0-9°º][A-ZÑ0-9°º ]{0,9}$/.test(v) },
+  { clave: 'barrio', columna: 'Barrio', ok: v => new RegExp(`^[${L_}0-9][${L_}0-9.'°º ]{1,59}$`).test(v) },
+  { clave: 'vinculo', columna: 'Vínculo', etiqueta: 'A quién corresponde', texto: false, noEsDato: true, ok: v => VINCULOS.indexOf(v) >= 0 },
+  { clave: 'parentesco', columna: 'Parentesco', texto: false, noEsDato: true, ok: v => PARENTESCOS.indexOf(v) >= 0 },
+  { clave: 'parentescoOtro', columna: 'Parentesco (otro)', noEsDato: true, ok: v => reNombre_.test(v) },
+  { clave: 'partidaInmueble', columna: 'Partida Municipal Inmueble', opcional: true, ok: v => /^\d{1,12}$/.test(v) },
+  { clave: 'partidaComercio', columna: 'Partida Municipal Comercio', opcional: true, ok: v => /^\d{1,12}$/.test(v) },
+  { clave: 'comentarios', columna: 'Comentarios', opcional: true, noEsDato: true, ok: v => v.length <= 500 },
 ];
+
+const COLUMNAS_REGISTROS = ['ID', 'Fecha de carga', 'Secretaría', 'Usuario']
+  .concat(CAMPOS.map(c => c.columna), ['Última edición', 'Editado por']);
+const COLUMNAS_USUARIOS = ['Usuario', 'Nombre', 'Perfil', 'Secretaría', 'Activo', 'Salt', 'Hash', 'Creado'];
 
 /* ============================== API ============================== */
 
 function doGet() {
-  return json_({ ok: true, servicio: 'Base Integral de Contribuyentes', version: 1 });
+  return json_({ ok: true, servicio: 'Base Integral de Contribuyentes', version: 2 });
 }
 
 function doPost(e) {
@@ -70,7 +80,8 @@ function doPost(e) {
       case 'logout': cerrarSesion_(req.token); return json_({ ok: true });
       case 'guardar': return json_(guardar_(sesion_(req.token), req.datos));
       case 'editar': return json_(editar_(sesion_(req.token), req.id, req.datos));
-      case 'estadisticas': return json_(estadisticas_(sesion_(req.token)));
+      case 'buscarDni': return json_(buscarDni_(sesion_(req.token), req.dni, req.excluir));
+      case 'estadisticas': return json_(estadisticas_(sesion_(req.token), req.desde, req.hasta));
       default: return json_({ ok: false, error: 'Acción desconocida.' });
     }
   } catch (err) {
@@ -159,34 +170,50 @@ function hash_(salt, clave) {
 
 /* ============================ Registros ============================ */
 
+/**
+ * Devuelve { encabezado: índice } de la hoja Registros. Las columnas se ubican por nombre,
+ * así se pueden agregar campos nuevos (o reordenar columnas) sin romper los datos existentes.
+ * Si falta alguna columna conocida, la agrega al final.
+ */
+function columnas_(hoja) {
+  const ancho = hoja.getLastColumn();
+  let enc = ancho ? hoja.getRange(1, 1, 1, ancho).getValues()[0].map(String) : [];
+  const faltan = COLUMNAS_REGISTROS.filter(c => enc.indexOf(c) < 0);
+  if (faltan.length) {
+    hoja.getRange(1, enc.length + 1, 1, faltan.length).setValues([faltan])
+      .setFontWeight('bold').setBackground('#0f766e').setFontColor('#ffffff');
+    enc = enc.concat(faltan);
+  }
+  const mapa = { _ancho: enc.length };
+  enc.forEach((n, i) => { if (n && !(n in mapa)) mapa[n] = i; });
+  return mapa;
+}
+
 function normalizar_(datos) {
   datos = datos || {};
   const out = {};
-  CAMPOS.forEach(([clave]) => { out[clave] = String(datos[clave] == null ? '' : datos[clave]).trim(); });
+  CAMPOS.forEach(c => { out[c.clave] = String(datos[c.clave] == null ? '' : datos[c.clave]).trim(); });
   out.mail = out.mail.toLowerCase();
+  out.piso = out.piso.toUpperCase();
+  out.comentarios = out.comentarios.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000B-\u001F\u007F]/g, '');
   if (out.vinculo !== 'Familiar') out.parentesco = '';
+  if (out.parentesco !== 'Otro') out.parentescoOtro = '';
 
   const invalidos = CAMPOS
-    .filter(([clave, , ok]) => out[clave] !== '' && !ok(out[clave]))
-    .map(([, etiqueta]) => etiqueta);
+    .filter(c => out[c.clave] !== '' && !c.ok(out[c.clave]))
+    .map(c => c.etiqueta || c.columna);
   if (invalidos.length === 0 && out.dni && out.cuit && /^2[0347]/.test(out.cuit) && out.cuit.substr(2, 8) !== ('00000000' + out.dni).slice(-8)) {
     invalidos.push('CUIT/CUIL (no coincide con el DNI)');
   }
   if (invalidos.length) throw errorPublico_('Formato incorrecto en: ' + invalidos.join(', ') + '.');
 
-  const hayDatos = CAMPOS.some(([clave]) => clave !== 'vinculo' && clave !== 'parentesco' && out[clave] !== '');
-  if (!hayDatos) throw errorPublico_('El formulario está vacío.');
+  if (!CAMPOS.some(c => !c.noEsDato && out[c.clave] !== '')) throw errorPublico_('El formulario está vacío.');
   return out;
 }
 
-function fila_(datos) {
-  // Texto plano: se antepone ' para que Sheets no convierta números ni interprete fórmulas.
-  const t = v => (v === '' ? '' : "'" + v);
-  return [
-    t(datos.apellido), t(datos.nombre), t(datos.dni), t(datos.cuit),
-    t(datos.celular), t(datos.mail), t(datos.calle), t(datos.numero),
-    datos.vinculo, datos.parentesco,
-  ];
+/** Valor a escribir en la celda. Texto con ' inicial: Sheets no convierte números ni interpreta fórmulas. */
+function celda_(campo, v) {
+  return v === '' || campo.texto === false ? v : "'" + v;
 }
 
 function guardar_(u, datosCrudos) {
@@ -194,10 +221,18 @@ function guardar_(u, datosCrudos) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
+    const hoja = hoja_(CONFIG.HOJA_REGISTROS);
+    const m = columnas_(hoja);
     const props = PropertiesService.getScriptProperties();
     const id = Number(props.getProperty('ultimoId') || 0) + 1;
     const ahora = new Date();
-    hoja_(CONFIG.HOJA_REGISTROS).appendRow([id, ahora, u.secretaria, u.usuario].concat(fila_(datos), ['', '']));
+    const fila = new Array(m._ancho).fill('');
+    fila[m['ID']] = id;
+    fila[m['Fecha de carga']] = ahora;
+    fila[m['Secretaría']] = u.secretaria;
+    fila[m['Usuario']] = u.usuario;
+    CAMPOS.forEach(c => { fila[m[c.columna]] = celda_(c, datos[c.clave]); });
+    hoja.appendRow(fila);
     props.setProperty('ultimoId', String(id));
     // Solo la última carga de cada usuario queda editable.
     props.setProperty('editable_' + u.usuario, String(id));
@@ -218,65 +253,132 @@ function editar_(u, id, datosCrudos) {
   lock.waitLock(20000);
   try {
     const hoja = hoja_(CONFIG.HOJA_REGISTROS);
-    const celda = hoja.getRange('A:A').createTextFinder(String(id)).matchEntireCell(true).findNext();
-    if (!celda) throw errorPublico_('No se encontró el registro.');
-    const fila = celda.getRow();
-    hoja.getRange(fila, 5, 1, 10).setValues([fila_(datos)]);
-    hoja.getRange(fila, 15, 1, 2).setValues([[new Date(), u.usuario]]);
+    const m = columnas_(hoja);
+    const fila = filaDeId_(hoja, m, id);
+    if (!fila) throw errorPublico_('No se encontró el registro.');
+    // Celda por celda: no se tocan otras columnas que el administrador haya agregado.
+    CAMPOS.forEach(c => hoja.getRange(fila, m[c.columna] + 1).setValue(celda_(c, datos[c.clave])));
+    hoja.getRange(fila, m['Última edición'] + 1).setValue(new Date());
+    hoja.getRange(fila, m['Editado por'] + 1).setValue(u.usuario);
     return { ok: true, id: id };
   } finally {
     lock.releaseLock();
   }
 }
 
-/* ========================== Estadísticas ========================== */
-
-function estadisticas_(u) {
-  if (u.perfil !== 'Análisis') throw errorPublico_('Tu perfil no tiene acceso a estadísticas.');
-  const filas = hoja_(CONFIG.HOJA_REGISTROS).getDataRange().getValues().slice(1).filter(f => f[0] !== '');
-  return Object.assign({ ok: true }, calcularEstadisticas_(filas.map(f => ({
-    fecha: f[1] instanceof Date ? f[1] : new Date(f[1]),
-    secretaria: String(f[2] || 'Sin secretaría'),
-    celular: String(f[8]).trim(),
-    mail: String(f[9]).trim(),
-    vinculo: String(f[12] || ''),
-  }))));
+function filaDeId_(hoja, m, id) {
+  const n = hoja.getLastRow() - 1;
+  if (n < 1) return 0;
+  const celda = hoja.getRange(2, m['ID'] + 1, n, 1).createTextFinder(String(id)).matchEntireCell(true).findNext();
+  return celda ? celda.getRow() : 0;
 }
 
-/** Misma lógica que el modo demo del frontend (assets/app.js → calcularEstadisticas). */
-function calcularEstadisticas_(regs) {
-  const DIA = 86400000;
-  const clave = d => Utilities.formatDate(d, CONFIG.ZONA_HORARIA, 'yyyy-MM-dd');
-  const hace7 = Date.now() - 7 * DIA;
+/** Aviso de DNI ya cargado (no bloquea el guardado). */
+function buscarDni_(u, dni, excluir) {
+  dni = String(dni || '');
+  if (!/^[1-9]\d{6,7}$/.test(dni)) throw errorPublico_('DNI inválido.');
+  const hoja = hoja_(CONFIG.HOJA_REGISTROS);
+  const m = columnas_(hoja);
+  const n = hoja.getLastRow() - 1;
+  if (n < 1) return { ok: true, cantidad: 0 };
+  const filas = hoja.getRange(2, m['DNI'] + 1, n, 1).createTextFinder(dni).matchEntireCell(true).findAll()
+    .map(c => hoja.getRange(c.getRow(), 1, 1, m._ancho).getValues()[0])
+    .filter(f => Number(f[m['ID']]) !== Number(excluir || 0));
+  if (!filas.length) return { ok: true, cantidad: 0 };
+  const ultima = filas.reduce((a, b) => (Number(b[m['ID']]) > Number(a[m['ID']]) ? b : a));
+  const fecha = ultima[m['Fecha de carga']];
+  return {
+    ok: true,
+    cantidad: filas.length,
+    ultimo: {
+      id: Number(ultima[m['ID']]),
+      secretaria: String(ultima[m['Secretaría']]),
+      fecha: fecha instanceof Date ? fecha.toISOString() : String(fecha),
+    },
+  };
+}
 
-  const porSecretaria = {};
-  const porVinculo = {};
-  const porDia = {};
-  for (let i = 29; i >= 0; i--) porDia[clave(new Date(Date.now() - i * DIA))] = 0;
+/* ========================== Estadísticas ========================== */
 
-  let celulares = 0, mails = 0, ultimos7 = 0;
-  regs.forEach(r => {
+function estadisticas_(u, desde, hasta) {
+  if (u.perfil !== 'Análisis') throw errorPublico_('Tu perfil no tiene acceso a estadísticas.');
+  const hoja = hoja_(CONFIG.HOJA_REGISTROS);
+  const m = columnas_(hoja);
+  const filas = hoja.getDataRange().getValues().slice(1).filter(f => f[m['ID']] !== '');
+  const regs = filas.map(f => {
+    const fecha = f[m['Fecha de carga']] instanceof Date ? f[m['Fecha de carga']] : new Date(f[m['Fecha de carga']]);
+    return {
+      fecha: fecha,
+      clave: isNaN(fecha.getTime()) ? '' : Utilities.formatDate(fecha, CONFIG.ZONA_HORARIA, 'yyyy-MM-dd'),
+      secretaria: String(f[m['Secretaría']] || 'Sin secretaría'),
+      celular: String(f[m['Teléfono celular']]).trim(),
+      mail: String(f[m['Mail']]).trim(),
+      vinculo: String(f[m['Vínculo']] || ''),
+    };
+  });
+  const hoy = Utilities.formatDate(new Date(), CONFIG.ZONA_HORARIA, 'yyyy-MM-dd');
+  return Object.assign({ ok: true }, calcularEstadisticas_(regs, desde, hasta, hoy));
+}
+
+/**
+ * Misma lógica que el modo demo del frontend (assets/app.js → calcularEstadisticas).
+ * regs: [{ fecha: Date, clave: 'yyyy-MM-dd', secretaria, celular, mail, vinculo }]
+ * desde / hasta: 'yyyy-MM-dd'. desde = 'inicio' toma desde la primera carga. Por defecto, últimos 30 días.
+ */
+function calcularEstadisticas_(regs, desde, hasta, hoy) {
+  const esFecha = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+  const sumarDias = (k, n) => {
+    const p = k.split('-').map(Number);
+    return new Date(Date.UTC(p[0], p[1] - 1, p[2] + n)).toISOString().slice(0, 10);
+  };
+  const validos = regs.filter(r => r.clave);
+  let h = esFecha(hasta) ? hasta : hoy;
+  let d = esFecha(desde) ? desde
+    : desde === 'inicio' ? validos.reduce((min, r) => (r.clave < min ? r.clave : min), h)
+    : sumarDias(h, -29);
+  if (d > h) { const t = d; d = h; h = t; }
+
+  const enRango = validos.filter(r => r.clave >= d && r.clave <= h);
+  const porSecretaria = {}, porVinculo = {};
+  let celulares = 0, mails = 0;
+  enRango.forEach(r => {
     porSecretaria[r.secretaria] = (porSecretaria[r.secretaria] || 0) + 1;
     const v = r.vinculo || 'Sin especificar';
     porVinculo[v] = (porVinculo[v] || 0) + 1;
     if (r.celular) celulares++;
     if (r.mail) mails++;
-    const t = r.fecha.getTime();
-    if (!isNaN(t)) {
-      if (t >= hace7) ultimos7++;
-      const k = clave(r.fecha);
-      if (k in porDia) porDia[k]++;
-    }
   });
+
+  // Serie temporal: por día hasta 62 días; por mes si el período es más largo.
+  const dias = Math.round((Date.parse(h) - Date.parse(d)) / 86400000) + 1;
+  const granularidad = dias <= 62 ? 'dia' : 'mes';
+  const serie = {};
+  if (granularidad === 'dia') {
+    for (let k = d; k <= h; k = sumarDias(k, 1)) serie[k] = 0;
+    enRango.forEach(r => { serie[r.clave]++; });
+  } else {
+    let y = Number(d.slice(0, 4)), mm = Number(d.slice(5, 7));
+    const fin = h.slice(0, 7);
+    for (let k = d.slice(0, 7); k <= fin; ) {
+      serie[k] = 0;
+      mm++; if (mm > 12) { mm = 1; y++; }
+      k = y + '-' + ('0' + mm).slice(-2);
+    }
+    enRango.forEach(r => { serie[r.clave.slice(0, 7)]++; });
+  }
+
   const ordenar = obj => Object.keys(obj).map(k => ({ nombre: k, cantidad: obj[k] })).sort((a, b) => b.cantidad - a.cantidad);
   return {
-    total: regs.length,
+    desde: d,
+    hasta: h,
+    total: enRango.length,
     celulares: celulares,
     mails: mails,
-    ultimos7: ultimos7,
+    ultimos7: validos.filter(r => r.clave >= sumarDias(hoy, -6) && r.clave <= hoy).length, // hoy y los 6 días anteriores
     porSecretaria: ordenar(porSecretaria),
     porVinculo: ordenar(porVinculo),
-    porDia: Object.keys(porDia).map(k => ({ fecha: k, cantidad: porDia[k] })),
+    granularidad: granularidad,
+    serie: Object.keys(serie).map(k => ({ clave: k, cantidad: serie[k] })),
     generado: new Date().toISOString(),
   };
 }
@@ -300,10 +402,11 @@ function onOpen() {
 function setup() {
   const ss = SpreadsheetApp.getActive();
   ss.setSpreadsheetTimeZone(CONFIG.ZONA_HORARIA);
-  prepararHoja_(ss, CONFIG.HOJA_REGISTROS, COLUMNAS_REGISTROS, h => {
-    h.getRange('B:B').setNumberFormat('dd/mm/yyyy hh:mm');
-    h.getRange('O:O').setNumberFormat('dd/mm/yyyy hh:mm');
-  });
+  const registros = prepararHoja_(ss, CONFIG.HOJA_REGISTROS, COLUMNAS_REGISTROS);
+  const m = columnas_(registros); // agrega columnas nuevas si la hoja ya existía
+  const filas = registros.getMaxRows() - 1;
+  ['Fecha de carga', 'Última edición'].forEach(c => registros.getRange(2, m[c] + 1, filas, 1).setNumberFormat('dd/mm/yyyy hh:mm'));
+  registros.getRange(2, m['Comentarios'] + 1, filas, 1).setWrap(true);
   prepararHoja_(ss, CONFIG.HOJA_USUARIOS, COLUMNAS_USUARIOS, h => {
     h.hideColumns(6, 2); // Salt y Hash
   });

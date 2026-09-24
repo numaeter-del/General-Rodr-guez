@@ -84,6 +84,12 @@
     if (v.length > 60) return 'Máximo 60 caracteres.';
     return null;
   }
+  function filtroPartida(v) {
+    if (/[.\-/,\s]/.test(v)) return 'Sin puntos, guiones, barras ni espacios: escribí solo los números.';
+    if (/\D/.test(v)) return 'Solo números.';
+    if (v.length > 12) return 'Máximo 12 dígitos.';
+    return null;
+  }
   const validarNombre = v => (v.replace(/[ ']/g, '').length < 2 ? 'Escribí al menos 2 letras.' : null);
   const capitalizar = v => v.trim().toLowerCase().replace(new RegExp(`(^|[ '])([${LETRAS}])`, 'g'), (m, a, b) => a + b.toUpperCase());
 
@@ -92,6 +98,7 @@
    *  - filtro(valor): se evalúa en cada tecla. Si devuelve un mensaje, la tecla se rechaza
    *    (no se puede seguir escribiendo), el campo se pone en rojo y suena el aviso.
    *  - validar(valor): se evalúa al salir del campo y al guardar (formato completo).
+   * opcional: true → no se reclama si queda vacío.  esDato: false → no cuenta como dato del contribuyente.
    */
   const CAMPOS = [
     {
@@ -206,6 +213,29 @@
       validar: v => (v === 'S/N' || /^[1-9]\d{0,5}$/.test(v) ? null : 'Numeración inválida.'),
     },
     {
+      id: 'barrio', grupo: 'domicilio', etiqueta: 'Barrio', icono: 'map',
+      formato: 'Nombre del barrio', ejemplo: 'Vista Linda', capitalizar: true,
+      filtro(v) {
+        if (new RegExp(`[^0-9${LETRAS}.'°º ]`).test(v)) return 'Solo letras, números, espacios y puntos (sin comas, guiones ni símbolos).';
+        if (/^[ .'°º]/.test(v)) return 'Empezá con el nombre del barrio.';
+        if (/ {2}/.test(v)) return 'Sin espacios dobles.';
+        if (v.length > 60) return 'Máximo 60 caracteres.';
+        return null;
+      },
+      validar: v => (v.replace(new RegExp(`[^0-9${LETRAS}]`, 'g'), '').length < 2 ? 'Nombre de barrio demasiado corto.' : null),
+    },
+    {
+      id: 'piso', grupo: 'domicilio', etiqueta: 'Piso / Depto.', icono: 'building', opcional: true,
+      formato: 'Piso y departamento', ejemplo: '3 B', transformar: v => v.toUpperCase(),
+      filtro(v) {
+        if (/[^0-9A-ZÑ°º ]/.test(v)) return 'Solo letras y números, sin guiones ni barras (ej: 3 B, PB 2).';
+        if (/^[ °º]/.test(v)) return 'Empezá con el piso (ej: 3 B).';
+        if (/ {2}/.test(v)) return 'Sin espacios dobles.';
+        if (v.length > 10) return 'Máximo 10 caracteres.';
+        return null;
+      },
+    },
+    {
       id: 'vinculo', grupo: 'vinculo', etiqueta: '¿A quién corresponden los datos?', icono: 'users', tipo: 'select',
       formato: 'Elegí una opción de la lista', opciones: VINCULOS,
     },
@@ -214,6 +244,26 @@
       formato: 'Relación con el titular', opciones: PARENTESCOS,
       visible: () => estado.valores.vinculo === 'Familiar',
     },
+    {
+      id: 'parentescoOtro', grupo: 'vinculo', etiqueta: 'Especificá el parentesco', icono: 'pencil', esDato: false,
+      formato: 'Solo letras', ejemplo: 'Abuela', capitalizar: true,
+      filtro: filtroNombre, validar: validarNombre,
+      visible: () => estado.valores.vinculo === 'Familiar' && estado.valores.parentesco === 'Otro',
+    },
+    {
+      id: 'partidaInmueble', grupo: 'complementarios', etiqueta: 'Partida Municipal Inmueble', icono: 'home', teclado: 'numeric', opcional: true,
+      formato: 'Solo números, sin puntos ni guiones', ejemplo: '123456', filtro: filtroPartida,
+    },
+    {
+      id: 'partidaComercio', grupo: 'complementarios', etiqueta: 'Partida Municipal Comercio', icono: 'store', teclado: 'numeric', opcional: true,
+      formato: 'Solo números, sin puntos ni guiones', ejemplo: '654321', filtro: filtroPartida,
+    },
+    {
+      id: 'comentarios', grupo: 'comentarios', etiqueta: 'Comentarios u observaciones', icono: 'message', tipo: 'textarea',
+      opcional: true, esDato: false, maximo: 500,
+      formato: 'Texto libre: cualquier dato que quieras agregar', placeholder: 'Escribí aquí lo que quieras agregar…',
+      filtro: v => (v.length > 500 ? 'Máximo 500 caracteres.' : null),
+    },
   ];
   const CAMPO = Object.fromEntries(CAMPOS.map(c => [c.id, c]));
   const GRUPOS = [
@@ -221,6 +271,8 @@
     { id: 'contacto', titulo: 'Contacto', icono: 'phone' },
     { id: 'domicilio', titulo: 'Domicilio', icono: 'home' },
     { id: 'vinculo', titulo: 'Vínculo', icono: 'users' },
+    { id: 'complementarios', titulo: 'Datos complementarios', icono: 'folder', opcional: true },
+    { id: 'comentarios', titulo: 'Comentarios', icono: 'message', opcional: true },
   ];
 
   /* Validación completa de un conjunto de datos (se usa también en el modo demo como "servidor"). */
@@ -265,7 +317,7 @@
       analisis: { usuario: 'analisis', nombre: 'Analista de Datos', perfil: 'Análisis', secretaria: 'Secretaría de Gobierno' },
     };
     const SECRETARIAS = ['Secretaría de Hacienda', 'Secretaría de Gobierno', 'Secretaría de Salud', 'Secretaría de Desarrollo Social', 'Secretaría de Obras Públicas'];
-    const K = 'gr_demo_registros';
+    const K = 'gr_demo_registros_v2';
     const pausa = ms => new Promise(r => setTimeout(r, ms));
 
     function registros() {
@@ -276,12 +328,12 @@
         const azar = () => ((s = (s * 16807) % 2147483647) / 2147483647);
         regs = [];
         const pesos = [0.3, 0.22, 0.2, 0.17, 0.11];
-        for (let i = 0; i < 168; i++) {
+        for (let i = 0; i < 260; i++) {
           let r = azar(), k = 0;
           while (r > pesos[k] && k < pesos.length - 1) { r -= pesos[k]; k++; }
           regs.push({
             id: i + 1,
-            fecha: new Date(Date.now() - Math.floor(azar() * azar() * 30 * 86400000)).toISOString(),
+            fecha: new Date(Date.now() - Math.floor(azar() * azar() * (i < 180 ? 30 : 200) * 86400000)).toISOString(),
             secretaria: SECRETARIAS[k], usuario: 'ejemplo',
             celular: azar() < 0.82 ? 'x' : '', mail: azar() < 0.58 ? 'x' : '',
             vinculo: VINCULOS[Math.floor(azar() * azar() * 4)],
@@ -334,40 +386,71 @@
           almacen.set(K, regs, 'local');
           return { ok: true, id: r.id };
         }
+        case 'buscarDni': {
+          sesion();
+          const iguales = registros().filter(r => r.dni === p.dni && r.id !== Number(p.excluir || 0));
+          if (!iguales.length) return { ok: true, cantidad: 0 };
+          const u = iguales[iguales.length - 1];
+          return { ok: true, cantidad: iguales.length, ultimo: { id: u.id, secretaria: u.secretaria, fecha: u.fecha } };
+        }
         case 'estadisticas': {
           if (sesion().perfil !== 'Análisis') throw new Error('Tu perfil no tiene acceso a estadísticas.');
-          return Object.assign({ ok: true }, calcularEstadisticas(registros()));
+          const regs = registros().map(r => Object.assign({}, r, { fecha: new Date(r.fecha), clave: claveFecha(r.fecha) }));
+          return Object.assign({ ok: true }, calcularEstadisticas(regs, p.desde, p.hasta, claveFecha(Date.now())));
         }
         default: throw new Error('Acción desconocida.');
       }
     };
   }
 
-  /** Espejo de calcularEstadisticas_ del backend (Code.gs). */
-  function calcularEstadisticas(regs) {
-    const DIA = 86400000;
-    const clave = d => { const x = new Date(d); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
-    const porDia = {};
-    for (let i = 29; i >= 0; i--) porDia[clave(Date.now() - i * DIA)] = 0;
-    const porSec = {}, porVin = {};
-    let celulares = 0, mails = 0, ultimos7 = 0;
-    const hace7 = Date.now() - 7 * DIA;
-    regs.forEach(r => {
-      porSec[r.secretaria] = (porSec[r.secretaria] || 0) + 1;
+  /* Fechas como claves 'aaaa-mm-dd' (hora local del navegador). */
+  const claveFecha = d => { const x = new Date(d); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  const sumarDias = (k, n) => { const [y, m, d] = k.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+  const fechaDeClave = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d || 1); };
+
+  /** Espejo de calcularEstadisticas_ del backend (Code.gs): mantener ambas iguales. */
+  function calcularEstadisticas(regs, desde, hasta, hoy) {
+    const esFecha = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+    const validos = regs.filter(r => r.clave);
+    let h = esFecha(hasta) ? hasta : hoy;
+    let d = esFecha(desde) ? desde
+      : desde === 'inicio' ? validos.reduce((min, r) => (r.clave < min ? r.clave : min), h)
+      : sumarDias(h, -29);
+    if (d > h) [d, h] = [h, d];
+
+    const enRango = validos.filter(r => r.clave >= d && r.clave <= h);
+    const porSecretaria = {}, porVinculo = {};
+    let celulares = 0, mails = 0;
+    enRango.forEach(r => {
+      porSecretaria[r.secretaria] = (porSecretaria[r.secretaria] || 0) + 1;
       const v = r.vinculo || 'Sin especificar';
-      porVin[v] = (porVin[v] || 0) + 1;
+      porVinculo[v] = (porVinculo[v] || 0) + 1;
       if (r.celular) celulares++;
       if (r.mail) mails++;
-      const t = new Date(r.fecha).getTime();
-      if (t >= hace7) ultimos7++;
-      const k = clave(t);
-      if (k in porDia) porDia[k]++;
     });
+
+    const dias = Math.round((Date.parse(h) - Date.parse(d)) / 86400000) + 1;
+    const granularidad = dias <= 62 ? 'dia' : 'mes';
+    const serie = {};
+    if (granularidad === 'dia') {
+      for (let k = d; k <= h; k = sumarDias(k, 1)) serie[k] = 0;
+      enRango.forEach(r => { serie[r.clave]++; });
+    } else {
+      let y = Number(d.slice(0, 4)), mm = Number(d.slice(5, 7));
+      for (let k = d.slice(0, 7); k <= h.slice(0, 7);) {
+        serie[k] = 0;
+        if (++mm > 12) { mm = 1; y++; }
+        k = `${y}-${String(mm).padStart(2, '0')}`;
+      }
+      enRango.forEach(r => { serie[r.clave.slice(0, 7)]++; });
+    }
+
     const ordenar = o => Object.keys(o).map(k => ({ nombre: k, cantidad: o[k] })).sort((a, b) => b.cantidad - a.cantidad);
     return {
-      total: regs.length, celulares, mails, ultimos7,
-      porSecretaria: ordenar(porSec), porVinculo: ordenar(porVin),
-      porDia: Object.keys(porDia).map(k => ({ fecha: k, cantidad: porDia[k] })),
+      desde: d, hasta: h, total: enRango.length, celulares, mails,
+      ultimos7: validos.filter(r => r.clave >= sumarDias(hoy, -6) && r.clave <= hoy).length, // hoy y los 6 días anteriores
+      porSecretaria: ordenar(porSecretaria), porVinculo: ordenar(porVinculo),
+      granularidad, serie: Object.keys(serie).map(k => ({ clave: k, cantidad: serie[k] })),
       generado: new Date().toISOString(),
     };
   }
@@ -427,7 +510,7 @@
     const cont = $('#grupos');
     cont.innerHTML = GRUPOS.map(g => `
       <section class="grupo" data-grupo="${g.id}">
-        <div class="grupo-cabecera"><span class="grupo-icono">${icono(g.icono)}</span><h3>${g.titulo}</h3></div>
+        <div class="grupo-cabecera"><span class="grupo-icono">${icono(g.icono)}</span><h3>${g.titulo}</h3>${g.opcional ? '<span class="tag-opcional">Opcional</span>' : ''}</div>
         <div class="grupo-campos ${g.id}">
           ${CAMPOS.filter(c => c.grupo === g.id).map(htmlCampo).join('')}
         </div>
@@ -443,7 +526,7 @@
         el.addEventListener('drop', e => e.preventDefault());
       }
       el.addEventListener('keydown', e => {
-        if (e.key === 'Enter') { e.preventDefault(); siguienteCampo(c.id); }
+        if (e.key === 'Enter' && c.tipo !== 'textarea') { e.preventDefault(); siguienteCampo(c.id); }
       });
     });
     const sn = $('#sn-numero');
@@ -464,11 +547,16 @@
     const cab = `<div class="campo-cabecera">
         <label class="campo-label" for="f-${c.id}">${c.etiqueta}</label>
         ${c.sinNumero ? '<label class="sn" title="Sin número"><input type="checkbox" id="sn-numero"> S/N</label>' : ''}
+        ${c.maximo ? `<span class="contador-car" id="cc-${c.id}">0 / ${c.maximo}</span>` : c.opcional && !GRUPOS.find(g => g.id === c.grupo).opcional ? '<span class="tag-opcional">Opcional</span>' : ''}
       </div>
       <div class="campo-formato">${icono('info')}<span>${c.formato}${c.ejemplo ? ` · Ej: <code>${esc(c.ejemplo)}</code>` : ''}</span></div>`;
     const estadoIc = `<span class="control-estado" aria-hidden="true">${icono('check', 'ic-ok')}${icono('x', 'ic-err')}</span>`;
     let control;
-    if (c.tipo === 'select') {
+    if (c.tipo === 'textarea') {
+      control = `<div class="control control-area">${icono(c.icono, 'control-icono')}
+        <textarea id="f-${c.id}" name="${c.id}" rows="3" placeholder="${esc(c.placeholder)}" spellcheck="true"
+          aria-describedby="m-${c.id}"></textarea></div>`;
+    } else if (c.tipo === 'select') {
       control = `<div class="control">${icono(c.icono, 'control-icono')}
         <select id="f-${c.id}" name="${c.id}" required>
           <option value="">Seleccioná…</option>
@@ -482,7 +570,8 @@
           aria-describedby="m-${c.id}">${estadoIc}</div>`;
     }
     return `<div class="campo" data-campo="${c.id}" ${c.visible ? 'hidden' : ''}>${cab}${control}
-      <div class="campo-msg" id="m-${c.id}" role="alert">${icono('alert-circle')}<span></span></div></div>`;
+      <div class="campo-msg" id="m-${c.id}" role="alert">${icono('alert-circle')}<span></span></div>
+      ${c.id === 'dni' ? `<div class="campo-aviso" id="a-dni" role="status">${icono('alert')}<span></span></div>` : ''}</div>`;
   }
 
   const nodoCampo = c => $(`.campo[data-campo="${c.id}"]`);
@@ -508,7 +597,18 @@
     estado.valores[c.id] = v;
     limpiarMarcas(c);
     refrescarCampo(c);
-    if (c.id === 'dni' && estado.valores.cuit) refrescarCampo(CAMPO.cuit);
+    if (c.maximo) actualizarContador(c);
+    if (c.id === 'dni') {
+      marcarDuplicado(null);
+      if (estado.valores.cuit) refrescarCampo(CAMPO.cuit);
+    }
+  }
+
+  function actualizarContador(c) {
+    const n = (estado.valores[c.id] || '').length;
+    const el = $('#cc-' + c.id);
+    el.textContent = `${n} / ${c.maximo}`;
+    el.classList.toggle('cerca', n >= c.maximo * 0.9);
   }
 
   function alSalir(c, el) {
@@ -519,17 +619,45 @@
       const error = c.validar(v);
       if (error) { marcarError(c, error); return; }
     }
-    if (c.id === 'dni' && estado.valores.cuit) {
-      const e2 = CAMPO.cuit.validar(estado.valores.cuit);
+    if (c.id === 'dni') {
+      const e2 = estado.valores.cuit && CAMPO.cuit.validar(estado.valores.cuit);
       if (e2) marcarError(CAMPO.cuit, e2, false);
+      verificarDni();
     }
     refrescarCampo(c);
+  }
+
+  /* ---------- Aviso de DNI ya cargado (no impide guardar) ---------- */
+  let dniVerificado = '';
+  async function verificarDni() {
+    const dni = estado.valores.dni || '';
+    if (!dni || CAMPO.dni.validar(dni) || dni === dniVerificado) return;
+    dniVerificado = dni;
+    try {
+      const r = await api('buscarDni', { dni, excluir: estado.editandoId || 0 });
+      if (estado.valores.dni !== dni) return;
+      marcarDuplicado(r.cantidad ? r : null);
+      if (r.cantidad) toast(esc(textoDuplicado(r)) + ' Podés guardar igual si corresponde.', 'aviso');
+    } catch (err) {
+      dniVerificado = '';
+      if (err.sesionVencida) sesionVencida();
+    }
+  }
+  function textoDuplicado(r) {
+    const f = new Date(r.ultimo.fecha);
+    const cuando = isNaN(f) ? '' : ', ' + f.toLocaleDateString('es-AR');
+    return `Este DNI ya tiene ${r.cantidad === 1 ? 'una carga' : r.cantidad + ' cargas'} (última: #${r.ultimo.id}, ${r.ultimo.secretaria}${cuando}).`;
+  }
+  function marcarDuplicado(r) {
+    nodoCampo(CAMPO.dni).classList.toggle('duplicado', !!r);
+    if (r) $('#a-dni span').textContent = textoDuplicado(r);
+    else if (estado.valores.dni !== dniVerificado) dniVerificado = '';
   }
 
   function alCambiarSelect(c, el) {
     estado.valores[c.id] = el.value;
     limpiarMarcas(c);
-    if (c.id === 'vinculo') refrescarVisibilidad(true);
+    refrescarVisibilidad(true);
     refrescarCampo(c);
   }
 
@@ -550,6 +678,7 @@
   }
 
   const camposActivos = () => CAMPOS.filter(c => !c.visible || c.visible());
+  const camposRequeridos = () => camposActivos().filter(c => !c.opcional);
   const completo = c => {
     const v = estado.valores[c.id];
     if (!v) return false;
@@ -592,7 +721,7 @@
   }
 
   function actualizarProgreso() {
-    const activos = camposActivos();
+    const activos = camposRequeridos();
     const hechos = activos.filter(completo).length;
     $('#progreso-valor').textContent = hechos;
     $('#progreso-total').textContent = activos.length;
@@ -610,6 +739,7 @@
     const d = {};
     CAMPOS.forEach(c => { d[c.id] = (estado.valores[c.id] || '').trim(); });
     if (d.vinculo !== 'Familiar') d.parentesco = '';
+    if (d.parentesco !== 'Otro') d.parentescoOtro = '';
     return d;
   }
 
@@ -630,10 +760,12 @@
     const sn = $('#sn-numero');
     sn.checked = estado.valores.numero === 'S/N';
     $('#f-numero').disabled = sn.checked;
-    // "vinculo" primero, para que "parentesco" se muestre antes de refrescarlo.
+    // Los valores ya están cargados: "parentesco" y "parentescoOtro" se muestran si corresponde.
     refrescarVisibilidad(false);
-    if (datos && datos.parentesco) { estado.valores.parentesco = datos.parentesco; $('#f-parentesco').value = datos.parentesco; }
     CAMPOS.forEach(refrescarCampo);
+    CAMPOS.filter(c => c.maximo).forEach(actualizarContador);
+    dniVerificado = '';
+    marcarDuplicado(null);
   }
 
   function modoEdicion(id) {
@@ -662,6 +794,7 @@
     if (cActivo && cActivo.tipo !== 'select') alSalir(cActivo, activo);
 
     const activos = camposActivos();
+    const requeridos = camposRequeridos();
 
     // 1) Formatos incorrectos: no se puede guardar.
     const invalidos = activos.filter(c => c.tipo !== 'select' && estado.valores[c.id] && c.validar && c.validar(estado.valores[c.id]));
@@ -675,7 +808,7 @@
 
     // 2) Formulario vacío.
     const datos = datosFormulario();
-    if (!CAMPOS.some(c => c.tipo !== 'select' && datos[c.id])) {
+    if (!CAMPOS.some(c => c.tipo !== 'select' && c.esDato !== false && datos[c.id])) {
       Sonido.error();
       toast('El formulario está vacío. Cargá al menos un dato del contribuyente.', 'error');
       $('#f-' + CAMPOS[0].id).focus();
@@ -683,7 +816,7 @@
     }
 
     // 3) Campos faltantes: se pregunta si guardar igual.
-    const faltan = activos.filter(c => !estado.valores[c.id]);
+    const faltan = requeridos.filter(c => !estado.valores[c.id]);
     if (faltan.length) {
       Sonido.error();
       const lista = faltan.map(c => `<li>${esc(c.etiqueta.replace(/^¿|\?$/g, ''))}</li>`).join('');
@@ -699,6 +832,8 @@
       }
     }
 
+    // Si el DNI no se llegó a verificar (se guardó sin salir del campo), se avisa ahora.
+    await verificarDni();
     await enviar(datos);
   }
 
@@ -761,9 +896,13 @@
       ['DNI', d.dni || '—'],
       ['Celular', d.celular || '—'],
       ['Mail', d.mail || '—'],
-      ['Domicilio', [d.calle, d.numero].filter(Boolean).join(' ') || '—'],
-      ['Vínculo', d.vinculo ? d.vinculo + (d.parentesco ? ` (${d.parentesco})` : '') : '—'],
+      ['Domicilio', [d.calle, d.numero].filter(Boolean).join(' ') + (d.piso ? `, ${d.piso}` : '') || '—'],
+      ['Barrio', d.barrio || '—'],
+      ['Vínculo', d.vinculo ? d.vinculo + (d.parentesco ? ` (${d.parentesco === 'Otro' && d.parentescoOtro ? d.parentescoOtro : d.parentesco})` : '') : '—'],
     ];
+    if (d.partidaInmueble) filas.push(['Partida inmueble', d.partidaInmueble]);
+    if (d.partidaComercio) filas.push(['Partida comercio', d.partidaComercio]);
+    if (d.comentarios) filas.push(['Comentarios', d.comentarios]);
     $('#ultima-lista').innerHTML = filas.map(([k, v]) => `<dt>${k}</dt><dd title="${esc(v)}">${esc(v)}</dd>`).join('');
     const btn = $('#btn-editar');
     btn.disabled = estado.editandoId === u.id;
@@ -824,31 +963,74 @@
     return 2 * paso;
   }
 
+  /* ---------- Filtro de período ---------- */
+  const PRESETS = {
+    7: hoy => sumarDias(hoy, -6),
+    30: hoy => sumarDias(hoy, -29),
+    mes: hoy => hoy.slice(0, 8) + '01',
+    anio: hoy => hoy.slice(0, 5) + '01-01',
+    todo: () => 'inicio',
+  };
+  estado.filtro = { preset: '30', desde: '', hasta: '' };
+
+  function elegirPreset(p) {
+    const hoy = claveFecha(Date.now());
+    estado.filtro = { preset: p, desde: PRESETS[p](hoy), hasta: hoy };
+    cargarEstadisticas();
+  }
+
+  function alCambiarFechas() {
+    const d = $('#filtro-desde').value, h = $('#filtro-hasta').value;
+    if (!d || !h) return;
+    estado.filtro = { preset: null, desde: d, hasta: h };
+    cargarEstadisticas();
+  }
+
+  const fechaCorta = k => fechaDeClave(k).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const textoPeriodo = s => (s.desde === s.hasta ? `el ${fechaCorta(s.desde)}` : `del ${fechaCorta(s.desde)} al ${fechaCorta(s.hasta)}`);
+
+  let pedidoStats = 0;
   async function cargarEstadisticas() {
+    if (!estado.filtro.hasta) return elegirPreset(estado.filtro.preset || '30');
     const panel = $('#panel-estadisticas');
     const btn = $('#btn-actualizar');
+    const n = ++pedidoStats;
+    $$('.preset').forEach(b => {
+      const act = b.dataset.preset === String(estado.filtro.preset);
+      b.classList.toggle('activo', act);
+      b.setAttribute('aria-pressed', act);
+    });
     panel.classList.add('cargando');
     btn.classList.add('girando');
     try {
-      const s = await api('estadisticas');
+      const s = await api('estadisticas', { desde: estado.filtro.desde, hasta: estado.filtro.hasta });
+      if (n !== pedidoStats) return; // llegó una respuesta vieja
       pintarEstadisticas(s);
     } catch (err) {
       if (err.sesionVencida) return sesionVencida();
       toast(esc(err.message), 'error');
     } finally {
-      panel.classList.remove('cargando');
-      btn.classList.remove('girando');
+      if (n === pedidoStats) {
+        panel.classList.remove('cargando');
+        btn.classList.remove('girando');
+      }
     }
   }
 
   function pintarEstadisticas(s) {
+    const hoy = claveFecha(Date.now());
+    $('#filtro-desde').value = s.desde;
+    $('#filtro-hasta').value = s.hasta;
+    $('#filtro-desde').max = $('#filtro-hasta').max = hoy;
+
+    const periodo = textoPeriodo(s);
     const pct = n => (s.total ? Math.round(100 * n / s.total) : 0);
-    const desde = new Date(Date.now() - 7 * 86400000).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+    const desde7 = fechaDeClave(sumarDias(hoy, -6)).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
     const kpis = [
-      { ic: 'database', t: 'Total de registros', v: s.total, sub: 'en todas las secretarías' },
-      { ic: 'phone', t: 'Teléfonos celulares', v: s.celulares, sub: `${pct(s.celulares)}% de los registros`, medidor: pct(s.celulares) },
-      { ic: 'mail', t: 'Mails', v: s.mails, sub: `${pct(s.mails)}% de los registros`, medidor: pct(s.mails) },
-      { ic: 'calendar', t: 'Últimos 7 días', v: s.ultimos7, sub: `cargas desde el ${desde}` },
+      { ic: 'database', t: 'Registros del período', v: s.total, sub: 'en todas las secretarías' },
+      { ic: 'phone', t: 'Teléfonos celulares', v: s.celulares, sub: `${pct(s.celulares)}% de los registros del período`, medidor: pct(s.celulares) },
+      { ic: 'mail', t: 'Mails', v: s.mails, sub: `${pct(s.mails)}% de los registros del período`, medidor: pct(s.mails) },
+      { ic: 'calendar', t: 'Últimos 7 días', v: s.ultimos7, sub: `desde el ${desde7} · no depende del período` },
     ];
     $('#kpis').innerHTML = kpis.map(k => `
       <div class="tarjeta kpi">
@@ -858,16 +1040,20 @@
         ${k.medidor != null ? `<div class="kpi-medidor" role="img" aria-label="${k.medidor}%"><span style="width:${k.medidor}%"></span></div>` : ''}
       </div>`).join('');
 
+    const Periodo = periodo[0].toUpperCase() + periodo.slice(1);
+    $('#t-serie').textContent = s.granularidad === 'dia' ? 'Cargas por día' : 'Cargas por mes';
+    $$('.st-periodo').forEach(el => { el.textContent = Periodo; });
     pintarBarras($('#g-secretarias'), s.porSecretaria, s.total);
     pintarBarras($('#g-vinculos'), s.porVinculo, s.total);
-    pintarColumnas($('#g-dias'), s.porDia);
+    pintarColumnas($('#g-dias'), s.serie, s.granularidad, hoy);
 
     const g = new Date(s.generado);
-    $('#stats-actualizado').textContent = 'Actualizado ' + g.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) + ' h';
+    $('#stats-actualizado').textContent = `Período: ${periodo} · actualizado a las ` +
+      g.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) + ' h';
   }
 
   function pintarBarras(cont, items, total) {
-    if (!items.length) { cont.innerHTML = '<p class="vacio">Todavía no hay cargas.</p>'; return; }
+    if (!items.length) { cont.innerHTML = '<p class="vacio">No hay cargas en este período.</p>'; return; }
     const max = Math.max(...items.map(i => i.cantidad));
     cont.innerHTML = items.map(i => `
       <div class="barra-fila">
@@ -882,28 +1068,36 @@
       `${esc(items[k].nombre)}<br><strong>${fmtNum(items[k].cantidad)}</strong> cargas · ${total ? Math.round(100 * items[k].cantidad / total) : 0}%`));
   }
 
-  function pintarColumnas(cont, dias) {
-    const max = techo(Math.max(...dias.map(d => d.cantidad)));
+  function pintarColumnas(cont, serie, granularidad, hoy) {
+    const porDia = granularidad === 'dia';
+    const n = serie.length;
+    const max = techo(Math.max(0, ...serie.map(d => d.cantidad)));
     const ticks = [0, max / 2, max];
-    const fecha = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
-    const corto = k => fecha(k).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
-    const largo = k => fecha(k).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+    const corto = porDia
+      ? k => fechaDeClave(k).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+      : k => { const f = fechaDeClave(k); return f.toLocaleDateString('es-AR', { month: 'short' }).replace('.', '') + ' ' + String(f.getFullYear()).slice(2); };
+    const largo = porDia
+      ? k => fechaDeClave(k).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+      : k => fechaDeClave(k).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+    const actual = porDia ? hoy : hoy.slice(0, 7);
+    const paso = Math.max(1, Math.ceil(n / 8));
+    cont.style.setProperty('--col-max', n <= 12 ? '44px' : n <= 35 ? '18px' : '12px');
     cont.innerHTML = `
       <div class="columnas-area">
         ${ticks.map(t => `<div class="columnas-grilla ${t === 0 ? 'base' : ''}" style="top:${100 - 100 * t / max}%"><span>${fmtNum(t)}</span></div>`).join('')}
         <div class="columnas-serie">
-          ${dias.map((d, i) => `<div class="columna ${i === dias.length - 1 ? 'hoy' : ''}"><span style="height:0"></span></div>`).join('')}
+          ${serie.map(d => `<div class="columna ${d.clave === actual ? 'hoy' : ''}"><span style="height:0"></span></div>`).join('')}
         </div>
       </div>
-      <div class="columnas-ejex">${dias.map((d, i) => `<span>${(dias.length - 1 - i) % 5 === 0 ? corto(d.fecha) : ''}</span>`).join('')}</div>`;
+      <div class="columnas-ejex">${serie.map((d, i) => `<span>${(n - 1 - i) % paso === 0 ? corto(d.clave) : ''}</span>`).join('')}</div>`;
     cont.setAttribute('role', 'img');
-    cont.setAttribute('aria-label', 'Cargas por día, últimos 30 días: ' + dias.map(d => `${corto(d.fecha)}: ${d.cantidad}`).join(', '));
+    cont.setAttribute('aria-label', (porDia ? 'Cargas por día: ' : 'Cargas por mes: ') + serie.map(d => `${corto(d.clave)}: ${d.cantidad}`).join(', '));
     const cols = $$('.columna', cont);
     requestAnimationFrame(() => cols.forEach((c, i) => {
-      const h = 100 * dias[i].cantidad / max;
-      $('span', c).style.height = (dias[i].cantidad ? Math.max(h, 1.5) : 0) + '%';
+      const h = 100 * serie[i].cantidad / max;
+      $('span', c).style.height = (serie[i].cantidad ? Math.max(h, 1.5) : 0) + '%';
     }));
-    cols.forEach((c, i) => conTooltip(c, `${largo(dias[i].fecha)}<br><strong>${fmtNum(dias[i].cantidad)}</strong> cargas`));
+    cols.forEach((c, i) => conTooltip(c, `${largo(serie[i].clave)}<br><strong>${fmtNum(serie[i].cantidad)}</strong> cargas`));
   }
 
   /* ============================ NAVEGACIÓN / SESIÓN ============================ */
@@ -1029,7 +1223,9 @@
     $('#btn-cancelar-edicion').addEventListener('click', cancelarEdicion);
     $('#btn-editar').addEventListener('click', editarUltima);
     $('#btn-salir').addEventListener('click', salir);
-    $('#btn-actualizar').addEventListener('click', cargarEstadisticas);
+    $('#btn-actualizar').addEventListener('click', () => (estado.filtro.preset ? elegirPreset(estado.filtro.preset) : cargarEstadisticas()));
+    $$('.preset').forEach(b => b.addEventListener('click', () => elegirPreset(b.dataset.preset)));
+    ['#filtro-desde', '#filtro-hasta'].forEach(id => $(id).addEventListener('change', alCambiarFechas));
     $('#btn-sonido').addEventListener('click', () => { Sonido.activo = !Sonido.activo; pintarSonido(); });
     $$('.pestana').forEach(p => p.addEventListener('click', () => irA(p.dataset.vista)));
     window.addEventListener('beforeunload', e => {

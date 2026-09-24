@@ -19,7 +19,7 @@ Aplicación web para que las secretarías del municipio carguen datos de contrib
 |---|:-:|:-:|
 | Cargar registros | ✓ | ✓ |
 | Editar la última carga (hasta hacer una nueva) | ✓ | ✓ |
-| Estadísticas y gráficos | — | ✓ |
+| Estadísticas y gráficos, con filtro por período | — | ✓ |
 | Ver la planilla completa | — | — (solo el administrador) |
 
 **Validación estricta en cada tecla.** Si se escribe algo fuera de formato, el carácter no se acepta, el campo se pone en rojo, tiembla, suena un aviso y se explica el error. Cada campo muestra arriba cómo se debe completar.
@@ -33,8 +33,18 @@ Aplicación web para que las secretarías del municipio carguen datos de contrib
 | Mail | usuario@dominio.ext | `hola@net.com` | `hola@net`, `hola @net.com` |
 | Domicilio (calle) | solo texto; se permite número **al inicio** | `25 de Mayo` | `Rivadavia 1154` |
 | Nro. | solo números, o casilla **S/N** | `1154` | `11a` |
+| Barrio | letras, números, espacios y puntos | `Vista Linda` | comas, guiones, símbolos |
+| Piso / Depto. *(opcional)* | letras y números (se pasa a mayúsculas) | `3 B`, `PB 2` | `3-B`, `3/B` |
 | ¿A quién corresponden los datos? | Titular, Destinatario, Inquilino, Familiar | | |
 | Parentesco (solo si es Familiar) | Hijo/a, Esposo/a, Hermano/a, Padre/Madre, Otro | | |
+| Especificá el parentesco (solo si es «Otro») | solo letras | `Abuela` | números |
+| Partida Municipal Inmueble *(opcional)* | solo números, hasta 12 | `123456` | `12.345`, `12-345` |
+| Partida Municipal Comercio *(opcional)* | solo números, hasta 12 | `654321` | `12.345`, `12-345` |
+| Comentarios *(opcional)* | texto libre, hasta 500 caracteres | | |
+
+Los campos opcionales están al final del formulario (Datos complementarios y Comentarios) y no se reclaman al guardar.
+
+**DNI ya cargado.** Al completar el DNI, la app consulta si ya existe en la base y, si existe, avisa en ámbar cuántas cargas tiene y cuál fue la última (número, secretaría y fecha). Es solo un aviso: se puede guardar igual, porque una misma persona puede figurar en distintos trámites.
 
 Al tocar **Guardar** con campos vacíos aparece: *«Faltó cargar … ¿Querés guardar igual?»* con **Guardar** / **No guardar**. Con *No guardar* se vuelve al formulario con los campos faltantes en rojo.
 
@@ -74,6 +84,13 @@ Menú **Contribuyentes → Programar respaldo .xlsx diario**: todas las noches g
 
 ### Actualizar el backend
 Después de modificar `Code.gs`: **Implementar → Administrar implementaciones → editar (lápiz) → Versión: Nueva versión**. Así la URL no cambia.
+
+Las columnas de la hoja `Registros` se ubican **por su nombre**, no por su posición. Si se agregan campos nuevos, el script agrega las columnas que falten al final de la hoja, sin tocar los datos existentes. Se pueden reordenar columnas o agregar columnas propias, siempre que no se renombren los encabezados que usa la app.
+
+## Estadísticas
+- **Período:** botones rápidos (7 días, 30 días, Este mes, Este año, Todo) o fechas *Desde* / *Hasta*. El total, los celulares, los mails, las secretarías y el vínculo se calculan sobre el período elegido.
+- **Cargas por día o por mes:** hasta 62 días se muestra por día; en períodos más largos, por mes.
+- **Últimos 7 días:** hoy y los 6 días anteriores, siempre, sin importar el período elegido.
 
 ## Seguridad
 - La planilla no se comparte: el script corre con la cuenta del dueño y los usuarios nunca la ven. El perfil Análisis recibe solo totales, no datos personales.

@@ -52,6 +52,10 @@
       <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
       <symbol id="i-trend" viewBox="0 0 24 24"><path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/></symbol>
       <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
+      <symbol id="i-map" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></symbol>
+      <symbol id="i-store" viewBox="0 0 24 24"><path d="M4 4h16l1.5 5h-19z"/><path d="M4.5 9v11h15V9M9.5 20v-5h5v5"/></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+      <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 10.5h7M8.5 13.5h4"/></symbol>
       <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M10 13h4M7 16h10"/></symbol>
     </defs>
   </svg>
@@ -195,19 +199,34 @@
           <button class="btn btn-secundario" id="btn-actualizar"><svg><use href="#i-refresh"/></svg><span>Actualizar</span></button>
         </div>
 
+        <div class="tarjeta filtros">
+          <div class="filtros-titulo"><svg><use href="#i-calendar"/></svg> Período</div>
+          <div class="presets" role="group" aria-label="Períodos rápidos">
+            <button type="button" class="preset" data-preset="7">7 días</button>
+            <button type="button" class="preset activo" data-preset="30">30 días</button>
+            <button type="button" class="preset" data-preset="mes">Este mes</button>
+            <button type="button" class="preset" data-preset="anio">Este año</button>
+            <button type="button" class="preset" data-preset="todo">Todo</button>
+          </div>
+          <div class="rango">
+            <label>Desde <input type="date" id="filtro-desde"></label>
+            <label>Hasta <input type="date" id="filtro-hasta"></label>
+          </div>
+        </div>
+
         <div class="kpis" id="kpis"></div>
 
         <div class="graficos">
           <article class="tarjeta grafico grafico-ancho">
-            <header><h3>Cargas por día</h3><p>Últimos 30 días</p></header>
+            <header><h3 id="t-serie">Cargas por día</h3><p class="st-periodo"></p></header>
             <div id="g-dias" class="columnas"></div>
           </article>
           <article class="tarjeta grafico">
-            <header><h3>Cargas por secretaría</h3><p>Total acumulado</p></header>
+            <header><h3>Cargas por secretaría</h3><p class="st-periodo"></p></header>
             <div id="g-secretarias" class="barras"></div>
           </article>
           <article class="tarjeta grafico">
-            <header><h3>¿A quién corresponden los datos?</h3><p>Total acumulado</p></header>
+            <header><h3>¿A quién corresponden los datos?</h3><p class="st-periodo"></p></header>
             <div id="g-vinculos" class="barras"></div>
           </article>
         </div>
