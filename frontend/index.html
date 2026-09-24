@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Base Integral de Contribuyentes · General Rodríguez</title>
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+  <div class="luces" aria-hidden="true"><span></span><span></span><span></span></div>
+
+  <!-- Íconos (trazos estilo Lucide) -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+    <defs>
+      <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+      <symbol id="i-idcard" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.6-1.4 1.7-2 3-2s2.4.6 3 2M14 10h4M14 14h3"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
+      <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></symbol>
+      <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.1-7-11.5a7 7 0 0 1 14 0C19 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol>
+      <symbol id="i-hash" viewBox="0 0 24 24"><path d="M5 9h14M5 15h14M10 3 8 21M16 3l-2 18"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></symbol>
+      <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-9.3-9.2C1.5 7.6 3.6 4.5 7 4.5c2 0 3.3 1 5 3 1.7-2 3-3 5-3 3.4 0 5.5 3.1 4.3 6.3C19.5 15.4 12 20 12 20z"/></symbol>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+      <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></symbol>
+      <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M8 17v-5M13 17V8M18 17V5"/></symbol>
+      <symbol id="i-clipboard" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="18" rx="2"/><path d="M9 4V2.5h6V4M9 10h6M9 14h6M9 18h3"/></symbol>
+      <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/><path d="m15 5 4 4"/></symbol>
+      <symbol id="i-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></symbol>
+      <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></symbol>
+      <symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></symbol>
+      <symbol id="i-mute" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6M16 9l6 6"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+      <symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+      <symbol id="i-alert-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15 6.7L3 16M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+      <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></symbol>
+      <symbol id="i-building" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M9 7h1M14 7h1M9 11h1M14 11h1M9 15h1M14 15h1M10 21v-3h4v3"/></symbol>
+      <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="17" rx="2"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+      <symbol id="i-trend" viewBox="0 0 24 24"><path d="m3 17 6-6 4 4 8-8"/><path d="M14 7h7v7"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
+      <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M10 13h4M7 16h10"/></symbol>
+    </defs>
+  </svg>
+
+  <!-- ================= LOGIN ================= -->
+  <section id="vista-login" class="vista-login">
+    <div class="login-card tarjeta">
+      <img class="login-logo" src="assets/logo.webp" alt="Yo amo General Rodríguez" width="640" height="538">
+      <h1 class="login-titulo">Base Integral de Contribuyentes</h1>
+      <p class="login-sub">Ingresá con el usuario asignado a tu secretaría.</p>
+
+      <form id="form-login" class="login-form" autocomplete="on" novalidate>
+        <label class="login-campo">
+          <span>Usuario</span>
+          <div class="control">
+            <svg class="control-icono"><use href="#i-user"/></svg>
+            <input id="login-usuario" name="usuario" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+          </div>
+        </label>
+        <label class="login-campo">
+          <span>Contraseña</span>
+          <div class="control">
+            <svg class="control-icono"><use href="#i-lock"/></svg>
+            <input id="login-clave" name="clave" type="password" autocomplete="current-password" required>
+            <button type="button" class="control-accion" id="ver-clave" aria-label="Mostrar contraseña"><svg><use href="#i-eye"/></svg></button>
+          </div>
+        </label>
+        <p id="login-error" class="login-error" role="alert" hidden></p>
+        <button type="submit" class="btn btn-primario btn-bloque" id="btn-ingresar">
+          <span>Ingresar</span>
+        </button>
+      </form>
+
+      <div id="aviso-demo" class="aviso-demo" hidden>
+        <svg><use href="#i-info"/></svg>
+        <div><strong>Modo demo</strong> — los datos quedan solo en este navegador.<br>
+          Usuarios: <code>carga</code> o <code>analisis</code> · contraseña <code>demo1234</code></div>
+      </div>
+      <p class="login-pie"><svg><use href="#i-shield"/></svg> Conexión segura · Acceso restringido</p>
+    </div>
+  </section>
+
+  <!-- ================= APLICACIÓN ================= -->
+  <div id="vista-app" class="vista-app" hidden>
+    <header class="barra">
+      <div class="barra-marca">
+        <img src="assets/logo.webp" alt="General Rodríguez" class="barra-logo" width="640" height="538">
+        <div class="barra-titulos">
+          <strong>Base Integral de Contribuyentes</strong>
+          <span>Municipalidad de General Rodríguez</span>
+        </div>
+      </div>
+
+      <nav class="pestanas" id="pestanas" role="tablist" hidden>
+        <button role="tab" class="pestana activa" data-vista="carga" aria-selected="true"><svg><use href="#i-clipboard"/></svg><span>Carga de datos</span></button>
+        <button role="tab" class="pestana" data-vista="estadisticas" aria-selected="false"><svg><use href="#i-chart"/></svg><span>Estadísticas</span></button>
+      </nav>
+
+      <div class="barra-usuario">
+        <span id="chip-demo" class="chip-demo" hidden>DEMO</span>
+        <button class="btn-icono" id="btn-sonido" title="Silenciar sonidos" aria-label="Silenciar sonidos"><svg><use href="#i-volume"/></svg></button>
+        <div class="usuario-chip">
+          <span class="avatar" id="usuario-avatar">—</span>
+          <div class="usuario-datos">
+            <strong id="usuario-nombre">—</strong>
+            <span id="usuario-detalle">—</span>
+          </div>
+        </div>
+        <button class="btn-icono" id="btn-salir" title="Cerrar sesión" aria-label="Cerrar sesión"><svg><use href="#i-logout"/></svg></button>
+      </div>
+    </header>
+
+    <main class="contenido">
+      <!-- ---------- Carga ---------- -->
+      <section id="panel-carga" class="panel" role="tabpanel">
+        <div class="carga-grid">
+          <form id="form-carga" class="tarjeta formulario" novalidate autocomplete="off">
+            <div class="form-cabecera">
+              <div class="form-titulo">
+                <span class="form-titulo-icono"><svg><use href="#i-clipboard"/></svg></span>
+                <div>
+                  <h2 id="form-titulo">Nueva carga</h2>
+                  <p id="form-subtitulo">Completá los datos respetando el formato indicado en cada campo.</p>
+                </div>
+              </div>
+              <div class="progreso" aria-live="polite">
+                <div class="progreso-texto"><span id="progreso-valor">0</span> de <span id="progreso-total">9</span> campos</div>
+                <div class="progreso-barra"><span id="progreso-relleno"></span></div>
+              </div>
+            </div>
+
+            <div id="banner-edicion" class="banner-edicion" hidden>
+              <svg><use href="#i-pencil"/></svg>
+              <span>Estás editando la carga <strong id="banner-id"></strong>. Guardá los cambios o cancelá la edición.</span>
+            </div>
+
+            <div id="grupos"></div>
+
+            <div class="form-acciones">
+              <p class="atajo"><svg><use href="#i-keyboard"/></svg> <kbd>Enter</kbd> pasa al siguiente campo</p>
+              <div class="form-botones">
+                <button type="button" class="btn btn-secundario" id="btn-limpiar"><svg><use href="#i-reset"/></svg><span>Limpiar</span></button>
+                <button type="button" class="btn btn-secundario" id="btn-cancelar-edicion" hidden><svg><use href="#i-x"/></svg><span>Cancelar edición</span></button>
+                <button type="submit" class="btn btn-primario" id="btn-guardar"><svg><use href="#i-save"/></svg><span>Guardar</span></button>
+              </div>
+            </div>
+          </form>
+
+          <aside class="lateral">
+            <div class="tarjeta ultima" id="tarjeta-ultima">
+              <div class="lateral-titulo"><svg><use href="#i-clock"/></svg> Última carga</div>
+              <div id="ultima-vacia" class="ultima-vacia">
+                <p>Todavía no guardaste ninguna carga en esta sesión.</p>
+              </div>
+              <div id="ultima-datos" hidden>
+                <div class="ultima-id"><span id="ultima-id"></span><span class="ultima-hora" id="ultima-hora"></span></div>
+                <dl class="ultima-lista" id="ultima-lista"></dl>
+                <button type="button" class="btn btn-editar btn-bloque" id="btn-editar"><svg><use href="#i-pencil"/></svg><span>Editar</span></button>
+                <p class="ultima-nota">Podés editarla hasta que guardes una carga nueva.</p>
+              </div>
+            </div>
+
+            <div class="tarjeta sesion-resumen">
+              <div class="lateral-titulo"><svg><use href="#i-building"/></svg> <span id="lateral-secretaria">Secretaría</span></div>
+              <div class="contador">
+                <strong id="contador-sesion">0</strong>
+                <span>cargas guardadas<br>en esta sesión</span>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ---------- Estadísticas ---------- -->
+      <section id="panel-estadisticas" class="panel" role="tabpanel" hidden>
+        <div class="stats-cabecera">
+          <div>
+            <h2>Estadísticas</h2>
+            <p id="stats-actualizado">—</p>
+          </div>
+          <button class="btn btn-secundario" id="btn-actualizar"><svg><use href="#i-refresh"/></svg><span>Actualizar</span></button>
+        </div>
+
+        <div class="kpis" id="kpis"></div>
+
+        <div class="graficos">
+          <article class="tarjeta grafico grafico-ancho">
+            <header><h3>Cargas por día</h3><p>Últimos 30 días</p></header>
+            <div id="g-dias" class="columnas"></div>
+          </article>
+          <article class="tarjeta grafico">
+            <header><h3>Cargas por secretaría</h3><p>Total acumulado</p></header>
+            <div id="g-secretarias" class="barras"></div>
+          </article>
+          <article class="tarjeta grafico">
+            <header><h3>¿A quién corresponden los datos?</h3><p>Total acumulado</p></header>
+            <div id="g-vinculos" class="barras"></div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= MODAL ================= -->
+  <dialog id="modal" class="modal" aria-labelledby="modal-titulo">
+    <div class="modal-icono" id="modal-icono"><svg><use href="#i-alert"/></svg></div>
+    <h3 id="modal-titulo"></h3>
+    <div id="modal-texto" class="modal-texto"></div>
+    <div class="modal-botones">
+      <button type="button" class="btn btn-secundario" id="modal-no"></button>
+      <button type="button" class="btn btn-primario" id="modal-si"></button>
+    </div>
+  </dialog>
+
+  <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>
