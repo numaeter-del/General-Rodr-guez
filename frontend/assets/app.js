@@ -370,11 +370,11 @@
 
   function crearApiDemo() {
     const USUARIOS = {
-      carga: { usuario: 'carga', nombre: 'Operador de Carga', perfil: 'Carga', secretaria: 'Secretaría de Hacienda' },
+      carga: { usuario: 'carga', nombre: 'Operador de Carga', perfil: 'Carga', secretaria: 'Secretaría de Ingresos Públicos' },
       analisis: { usuario: 'analisis', nombre: 'Analista de Datos', perfil: 'Análisis', secretaria: 'Secretaría de Gobierno' },
     };
-    const SECRETARIAS = ['Secretaría de Hacienda', 'Secretaría de Gobierno', 'Secretaría de Salud', 'Secretaría de Desarrollo Social', 'Secretaría de Obras Públicas'];
-    const K = 'gr_demo_registros_v3';
+    const SECRETARIAS = ['Secretaría de Ingresos Públicos', 'Secretaría de Gobierno', 'Secretaría de Salud', 'Secretaría de Desarrollo Social', 'Secretaría de Obras Públicas'];
+    const K = 'gr_demo_registros_v4'; // cambiar la versión regenera los datos de ejemplo
     const pausa = ms => new Promise(r => setTimeout(r, ms));
     const refNueva = () => Array.from({ length: 16 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
     const vacio = () => Object.fromEntries(CAMPOS.map(c => [c.id, '']));
@@ -405,7 +405,7 @@
           calle: 'Rivadavia', numero: '1154', barrio: 'Centro', vinculo: 'Titular', partidaInmueble: '100200',
         }));
         regs.push(Object.assign(vacio(), {
-          id: 262, ref: refNueva(), fecha: new Date(Date.now() - 1 * 86400000).toISOString(), secretaria: 'Secretaría de Hacienda', usuario: 'ejemplo',
+          id: 262, ref: refNueva(), fecha: new Date(Date.now() - 1 * 86400000).toISOString(), secretaria: 'Secretaría de Ingresos Públicos', usuario: 'ejemplo',
           apellido: 'Fernández', nombre: 'Carlos', dni: '25333444', celular: '2374556677',
           calle: '25 de Mayo', numero: '480', barrio: 'Agua de Oro', vinculo: 'Inquilino', partidaComercio: '300400',
         }));
