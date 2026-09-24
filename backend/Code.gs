@@ -17,6 +17,8 @@
 const CONFIG = {
   HOJA_REGISTROS: 'Registros',
   HOJA_USUARIOS: 'Usuarios',
+  HOJA_HISTORIAL: 'Historial',
+  HOJA_BARRIOS: 'Barrios',
   SESION_SEGUNDOS: 6 * 60 * 60,      // 6 h (máximo de CacheService)
   MAX_INTENTOS_LOGIN: 5,
   BLOQUEO_LOGIN_SEGUNDOS: 15 * 60,
@@ -28,8 +30,17 @@ const PERFILES = ['Carga', 'Análisis'];
 const VINCULOS = ['Titular', 'Destinatario', 'Inquilino', 'Familiar'];
 const PARENTESCOS = ['Hijo/a', 'Esposo/a', 'Hermano/a', 'Padre/Madre', 'Otro'];
 
+/*
+ * Listado inicial de barrios (se copia a la hoja «Barrios» al ejecutar setup).
+ * Es PROVISORIO: reemplazarlo por el listado oficial directamente en la hoja «Barrios»;
+ * la app toma siempre lo que haya en esa hoja.
+ */
+const BARRIOS_INICIALES = ['Agua de Oro', 'Centro', 'El Rincón', 'General Güemes', 'Ruta 24 Km 10'];
+
 const L_ = 'A-Za-zÁÉÍÓÚÜÑáéíóúüñ';
 const reNombre_ = new RegExp(`^[${L_}][${L_}' ]{1,59}$`);
+const reBarrio_ = new RegExp(`^[${L_}0-9][${L_}0-9.'°º ]{1,59}$`);
+const reCelular_ = /^(11\d{8}|[23]\d{9})$/;
 
 /*
  * Campos del formulario (mismas reglas que el frontend, assets/app.js).
@@ -42,12 +53,14 @@ const CAMPOS = [
   { clave: 'nombre', columna: 'Nombre', ok: v => reNombre_.test(v) },
   { clave: 'dni', columna: 'DNI', ok: v => /^[1-9]\d{6,7}$/.test(v) },
   { clave: 'cuit', columna: 'CUIT/CUIL', ok: v => cuitValido_(v) },
-  { clave: 'celular', columna: 'Teléfono celular', ok: v => /^(11\d{8}|[23]\d{9})$/.test(v) },
+  { clave: 'celular', columna: 'Teléfono celular', ok: v => reCelular_.test(v) },
+  { clave: 'celular2', columna: 'Teléfono celular 2', opcional: true, ok: v => reCelular_.test(v) },
   { clave: 'mail', columna: 'Mail', ok: v => /^[a-z0-9](?:[a-z0-9._%+-]{0,62}[a-z0-9_%+-])?@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/.test(v) && v.indexOf('..') < 0 },
   { clave: 'calle', columna: 'Calle', ok: v => new RegExp(`^(\\d+ )?[${L_}][${L_}.' ]{1,79}$`).test(v) },
   { clave: 'numero', columna: 'Número', ok: v => v === 'S/N' || /^[1-9]\d{0,5}$/.test(v) },
   { clave: 'piso', columna: 'Piso/Depto', opcional: true, ok: v => /^[A-ZÑ0-9°º][A-ZÑ0-9°º ]{0,9}$/.test(v) },
-  { clave: 'barrio', columna: 'Barrio', ok: v => new RegExp(`^[${L_}0-9][${L_}0-9.'°º ]{1,59}$`).test(v) },
+  { clave: 'barrio', columna: 'Barrio', ok: v => v === 'Otro' || (barrios_().length ? barrios_().indexOf(v) >= 0 : reBarrio_.test(v)) },
+  { clave: 'barrioOtro', columna: 'Barrio (otro)', ok: v => reBarrio_.test(v) },
   { clave: 'vinculo', columna: 'Vínculo', etiqueta: 'A quién corresponde', texto: false, noEsDato: true, ok: v => VINCULOS.indexOf(v) >= 0 },
   { clave: 'parentesco', columna: 'Parentesco', texto: false, noEsDato: true, ok: v => PARENTESCOS.indexOf(v) >= 0 },
   { clave: 'parentescoOtro', columna: 'Parentesco (otro)', noEsDato: true, ok: v => reNombre_.test(v) },
@@ -55,15 +68,31 @@ const CAMPOS = [
   { clave: 'partidaComercio', columna: 'Partida Municipal Comercio', opcional: true, ok: v => /^\d{1,12}$/.test(v) },
   { clave: 'comentarios', columna: 'Comentarios', opcional: true, noEsDato: true, ok: v => v.length <= 500 },
 ];
+const CAMPO_ = {};
+CAMPOS.forEach(c => { CAMPO_[c.clave] = c; });
 
-const COLUMNAS_REGISTROS = ['ID', 'Fecha de carga', 'Secretaría', 'Usuario']
+/* Campos que dependen de otro: si se modifica el primero, también se validan / guardan estos. */
+const DEPENDIENTES = { barrio: ['barrioOtro'], vinculo: ['parentesco', 'parentescoOtro'], parentesco: ['parentescoOtro'], dni: ['cuit'], cuit: ['dni'] };
+
+/* Actualizaciones sobre una ficha existente: qué campos puede tocar cada acción. */
+const ACCIONES = {
+  telefono: { nombre: 'Nuevo teléfono', campos: ['celular', 'celular2'] },
+  domicilio: { nombre: 'Nuevo domicilio', campos: ['calle', 'numero', 'piso', 'barrio', 'barrioOtro'] },
+  correccion: { nombre: 'Corrección de datos', campos: CAMPOS.map(c => c.clave) },
+};
+
+/* Búsquedas permitidas (siempre por coincidencia exacta). */
+const BUSQUEDAS = { dni: 'dni', cuit: 'cuit', partidaInmueble: 'partidaInmueble', partidaComercio: 'partidaComercio' };
+
+const COLUMNAS_REGISTROS = ['ID', 'Ref', 'Fecha de carga', 'Secretaría', 'Usuario']
   .concat(CAMPOS.map(c => c.columna), ['Última edición', 'Editado por']);
 const COLUMNAS_USUARIOS = ['Usuario', 'Nombre', 'Perfil', 'Secretaría', 'Activo', 'Salt', 'Hash', 'Creado'];
+const COLUMNAS_HISTORIAL = ['Fecha', 'Usuario', 'Secretaría', 'ID', 'Acción', 'Campo', 'Valor anterior', 'Valor nuevo'];
 
 /* ============================== API ============================== */
 
 function doGet() {
-  return json_({ ok: true, servicio: 'Base Integral de Contribuyentes', version: 2 });
+  return json_({ ok: true, servicio: 'Base Integral de Contribuyentes', version: 3 });
 }
 
 function doPost(e) {
@@ -76,18 +105,24 @@ function doPost(e) {
   try {
     switch (req.accion) {
       case 'login': return json_(login_(req));
-      case 'sesion': return json_({ ok: true, usuario: sesion_(req.token) });
+      case 'sesion': return json_({ ok: true, usuario: sesion_(req.token), config: config_() });
       case 'logout': cerrarSesion_(req.token); return json_({ ok: true });
       case 'guardar': return json_(guardar_(sesion_(req.token), req.datos));
-      case 'editar': return json_(editar_(sesion_(req.token), req.id, req.datos));
-      case 'buscarDni': return json_(buscarDni_(sesion_(req.token), req.dni, req.excluir));
+      case 'editar': return json_(editar_(sesion_(req.token), req.ref, req.datos));
+      case 'buscar': return json_(buscar_(sesion_(req.token), req.tipo, req.valor, req.excluir));
+      case 'actualizar': return json_(actualizar_(sesion_(req.token), req.ref, req.accion, req.cambios));
       case 'estadisticas': return json_(estadisticas_(sesion_(req.token), req.desde, req.hasta));
       default: return json_({ ok: false, error: 'Acción desconocida.' });
     }
   } catch (err) {
     const msg = err && err.publico ? err.message : 'Error interno. Intentá nuevamente.';
     if (!(err && err.publico)) console.error(err && err.stack || err);
-    return json_({ ok: false, error: msg, sesionVencida: !!(err && err.sesionVencida) });
+    return json_({
+      ok: false, error: msg,
+      sesionVencida: !!(err && err.sesionVencida),
+      existe: !!(err && err.existe),
+      coincidencias: (err && err.coincidencias) || undefined,
+    });
   }
 }
 
@@ -126,7 +161,22 @@ function login_(req) {
   const token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
   const datos = { usuario: u.usuario, nombre: u.nombre, perfil: u.perfil, secretaria: u.secretaria };
   cache.put('sesion_' + token, JSON.stringify(datos), CONFIG.SESION_SEGUNDOS);
-  return { ok: true, token: token, usuario: datos };
+  return { ok: true, token: token, usuario: datos, config: config_() };
+}
+
+/** Datos de configuración que necesita el formulario (listas editables desde la planilla). */
+function config_() {
+  return { barrios: barrios_() };
+}
+
+let barriosCache_ = null;
+function barrios_() {
+  if (barriosCache_) return barriosCache_;
+  const h = SpreadsheetApp.getActive().getSheetByName(CONFIG.HOJA_BARRIOS);
+  barriosCache_ = h && h.getLastRow() > 1
+    ? h.getRange(2, 1, h.getLastRow() - 1, 1).getValues().map(f => String(f[0]).trim()).filter(Boolean)
+    : [];
+  return barriosCache_;
 }
 
 function sesion_(token) {
@@ -189,26 +239,39 @@ function columnas_(hoja) {
   return mapa;
 }
 
-function normalizar_(datos) {
+/**
+ * Limpia y valida los datos. opciones.validar: claves a validar (por defecto, todas).
+ * opciones.alta: exige que haya al menos un dato del contribuyente.
+ */
+function normalizar_(datos, opciones) {
+  opciones = opciones || {};
   datos = datos || {};
   const out = {};
   CAMPOS.forEach(c => { out[c.clave] = String(datos[c.clave] == null ? '' : datos[c.clave]).trim(); });
   out.mail = out.mail.toLowerCase();
   out.piso = out.piso.toUpperCase();
   out.comentarios = out.comentarios.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000B-\u001F\u007F]/g, '');
+  if (out.barrio !== 'Otro') out.barrioOtro = '';
   if (out.vinculo !== 'Familiar') out.parentesco = '';
   if (out.parentesco !== 'Otro') out.parentescoOtro = '';
 
-  const invalidos = CAMPOS
-    .filter(c => out[c.clave] !== '' && !c.ok(out[c.clave]))
-    .map(c => c.etiqueta || c.columna);
-  if (invalidos.length === 0 && out.dni && out.cuit && /^2[0347]/.test(out.cuit) && out.cuit.substr(2, 8) !== ('00000000' + out.dni).slice(-8)) {
+  const aValidar = opciones.validar ? conDependientes_(opciones.validar) : CAMPOS.map(c => c.clave);
+  const invalidos = aValidar
+    .filter(k => out[k] !== '' && !CAMPO_[k].ok(out[k]))
+    .map(k => CAMPO_[k].etiqueta || CAMPO_[k].columna);
+  if (invalidos.length === 0 && aValidar.indexOf('dni') >= 0 && out.dni && out.cuit && /^2[0347]/.test(out.cuit) && out.cuit.substr(2, 8) !== ('00000000' + out.dni).slice(-8)) {
     invalidos.push('CUIT/CUIL (no coincide con el DNI)');
   }
   if (invalidos.length) throw errorPublico_('Formato incorrecto en: ' + invalidos.join(', ') + '.');
 
-  if (!CAMPOS.some(c => !c.noEsDato && out[c.clave] !== '')) throw errorPublico_('El formulario está vacío.');
+  if (opciones.alta && !CAMPOS.some(c => !c.noEsDato && out[c.clave] !== '')) throw errorPublico_('El formulario está vacío.');
   return out;
+}
+
+function conDependientes_(claves) {
+  const set = {};
+  claves.forEach(k => { set[k] = true; (DEPENDIENTES[k] || []).forEach(d => { set[d] = true; }); });
+  return Object.keys(set).filter(k => CAMPO_[k]);
 }
 
 /** Valor a escribir en la celda. Texto con ' inicial: Sheets no convierte números ni interpreta fórmulas. */
@@ -216,86 +279,181 @@ function celda_(campo, v) {
   return v === '' || campo.texto === false ? v : "'" + v;
 }
 
+/* ---------- Acceso a filas ---------- */
+
+function refNueva_() {
+  return Utilities.getUuid().replace(/-/g, '').slice(0, 16);
+}
+
+function filasDe_(hoja, m, columna, valor) {
+  const n = hoja.getLastRow() - 1;
+  if (n < 1 || !(columna in m)) return [];
+  return hoja.getRange(2, m[columna] + 1, n, 1).createTextFinder(String(valor)).matchEntireCell(true).findAll()
+    .map(c => c.getRow());
+}
+
+function filaDeRef_(hoja, m, ref) {
+  if (!ref || !/^[a-f0-9]{16}$/.test(String(ref))) return 0;
+  const filas = filasDe_(hoja, m, 'Ref', ref);
+  return filas.length ? filas[0] : 0;
+}
+
+/** Ficha de una fila, tal como la ve el usuario. El ID interno solo se envía al perfil Análisis. */
+function ficha_(hoja, m, fila, u) {
+  const v = hoja.getRange(fila, 1, 1, m._ancho).getValues()[0];
+  let ref = String(v[m['Ref']] || '');
+  if (!ref) { // registros anteriores a la columna Ref
+    ref = refNueva_();
+    hoja.getRange(fila, m['Ref'] + 1).setValue(ref);
+  }
+  const datos = {};
+  CAMPOS.forEach(c => { datos[c.clave] = String(v[m[c.columna]] == null ? '' : v[m[c.columna]]); });
+  const fecha = v[m['Fecha de carga']];
+  const f = {
+    ref: ref,
+    fecha: fecha instanceof Date ? fecha.toISOString() : String(fecha),
+    secretaria: String(v[m['Secretaría']]),
+    datos: datos,
+  };
+  if (u.perfil === 'Análisis') f.id = Number(v[m['ID']]);
+  return { ficha: f, id: Number(v[m['ID']]) };
+}
+
+/** Lanza un error "existe" si el DNI o el CUIT ya están en otra ficha. */
+function verificarUnico_(hoja, m, datos, u, excluirFila) {
+  const filas = {};
+  [['dni', 'DNI'], ['cuit', 'CUIT/CUIL']].forEach(([k, col]) => {
+    if (datos[k]) filasDe_(hoja, m, col, datos[k]).forEach(f => { if (f !== excluirFila) filas[f] = true; });
+  });
+  const lista = Object.keys(filas).map(Number);
+  if (!lista.length) return;
+  throw errorPublico_('Ya existe una ficha con ese DNI o CUIT/CUIL. Actualizá la ficha existente en lugar de crear otra.', {
+    existe: true,
+    coincidencias: lista.slice(0, 5).map(f => ficha_(hoja, m, f, u).ficha),
+  });
+}
+
+function registrarHistorial_(u, id, accion, cambios) {
+  if (!cambios.length) return;
+  const h = hoja_(CONFIG.HOJA_HISTORIAL);
+  const ahora = new Date();
+  const t = v => (v === '' ? '' : "'" + v);
+  const filas = cambios.map(c => [ahora, u.usuario, u.secretaria, id, accion, c.campo, t(c.antes), t(c.despues)]);
+  h.getRange(h.getLastRow() + 1, 1, filas.length, COLUMNAS_HISTORIAL.length).setValues(filas);
+}
+
+/** Escribe solo las celdas que cambian y deja constancia en el Historial. */
+function aplicarCambios_(hoja, m, fila, u, accion, actual, nuevo) {
+  const cambios = CAMPOS.filter(c => (actual[c.clave] || '') !== (nuevo[c.clave] || ''));
+  cambios.forEach(c => hoja.getRange(fila, m[c.columna] + 1).setValue(celda_(c, nuevo[c.clave])));
+  if (cambios.length) {
+    hoja.getRange(fila, m['Última edición'] + 1).setValue(new Date());
+    hoja.getRange(fila, m['Editado por'] + 1).setValue(u.usuario);
+    const id = Number(hoja.getRange(fila, m['ID'] + 1).getValue());
+    registrarHistorial_(u, id, accion, cambios.map(c => ({ campo: c.columna, antes: actual[c.clave] || '', despues: nuevo[c.clave] || '' })));
+  }
+  return cambios.length;
+}
+
+/* ---------- Acciones ---------- */
+
 function guardar_(u, datosCrudos) {
-  const datos = normalizar_(datosCrudos);
+  const datos = normalizar_(datosCrudos, { alta: true });
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     const hoja = hoja_(CONFIG.HOJA_REGISTROS);
     const m = columnas_(hoja);
+    verificarUnico_(hoja, m, datos, u, 0);
     const props = PropertiesService.getScriptProperties();
     const id = Number(props.getProperty('ultimoId') || 0) + 1;
+    const ref = refNueva_();
     const ahora = new Date();
     const fila = new Array(m._ancho).fill('');
     fila[m['ID']] = id;
+    fila[m['Ref']] = ref;
     fila[m['Fecha de carga']] = ahora;
     fila[m['Secretaría']] = u.secretaria;
     fila[m['Usuario']] = u.usuario;
     CAMPOS.forEach(c => { fila[m[c.columna]] = celda_(c, datos[c.clave]); });
     hoja.appendRow(fila);
     props.setProperty('ultimoId', String(id));
-    // Solo la última carga de cada usuario queda editable.
+    // Solo la última carga de cada usuario queda editable por completo.
     props.setProperty('editable_' + u.usuario, String(id));
-    return { ok: true, id: id, fecha: ahora.toISOString() };
+    const r = { ok: true, ref: ref, fecha: ahora.toISOString() };
+    if (u.perfil === 'Análisis') r.id = id;
+    return r;
   } finally {
     lock.releaseLock();
   }
 }
 
-function editar_(u, id, datosCrudos) {
-  id = Number(id);
-  const editable = Number(PropertiesService.getScriptProperties().getProperty('editable_' + u.usuario) || 0);
-  if (!id || id !== editable) {
-    throw errorPublico_('Ese registro ya no se puede editar: solo se puede modificar la última carga realizada.');
-  }
-  const datos = normalizar_(datosCrudos);
+/** Edición completa de la última carga del usuario (hasta que haga una nueva). */
+function editar_(u, ref, datosCrudos) {
+  const datos = normalizar_(datosCrudos, { alta: true });
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     const hoja = hoja_(CONFIG.HOJA_REGISTROS);
     const m = columnas_(hoja);
-    const fila = filaDeId_(hoja, m, id);
-    if (!fila) throw errorPublico_('No se encontró el registro.');
-    // Celda por celda: no se tocan otras columnas que el administrador haya agregado.
-    CAMPOS.forEach(c => hoja.getRange(fila, m[c.columna] + 1).setValue(celda_(c, datos[c.clave])));
-    hoja.getRange(fila, m['Última edición'] + 1).setValue(new Date());
-    hoja.getRange(fila, m['Editado por'] + 1).setValue(u.usuario);
-    return { ok: true, id: id };
+    const fila = filaDeRef_(hoja, m, ref);
+    const editable = Number(PropertiesService.getScriptProperties().getProperty('editable_' + u.usuario) || 0);
+    const actual = fila ? ficha_(hoja, m, fila, u) : null;
+    if (!actual || actual.id !== editable) {
+      throw errorPublico_('Esa carga ya no se puede editar: solo se puede modificar la última carga realizada. Para cambiar datos, buscá la ficha y elegí «Corregir o completar un dato».');
+    }
+    verificarUnico_(hoja, m, datos, u, fila);
+    aplicarCambios_(hoja, m, fila, u, 'Edición de la última carga', actual.ficha.datos, datos);
+    return { ok: true };
   } finally {
     lock.releaseLock();
   }
 }
 
-function filaDeId_(hoja, m, id) {
-  const n = hoja.getLastRow() - 1;
-  if (n < 1) return 0;
-  const celda = hoja.getRange(2, m['ID'] + 1, n, 1).createTextFinder(String(id)).matchEntireCell(true).findNext();
-  return celda ? celda.getRow() : 0;
-}
-
-/** Aviso de DNI ya cargado (no bloquea el guardado). */
-function buscarDni_(u, dni, excluir) {
-  dni = String(dni || '');
-  if (!/^[1-9]\d{6,7}$/.test(dni)) throw errorPublico_('DNI inválido.');
+/** Búsqueda exacta por DNI, CUIT/CUIL o partida. Devuelve hasta 10 fichas, la más reciente primero. */
+function buscar_(u, tipo, valor, excluirRef) {
+  const clave = BUSQUEDAS[tipo];
+  valor = String(valor || '').trim();
+  if (!clave || !valor || !CAMPO_[clave].ok(valor)) throw errorPublico_('Dato de búsqueda inválido.');
   const hoja = hoja_(CONFIG.HOJA_REGISTROS);
   const m = columnas_(hoja);
-  const n = hoja.getLastRow() - 1;
-  if (n < 1) return { ok: true, cantidad: 0 };
-  const filas = hoja.getRange(2, m['DNI'] + 1, n, 1).createTextFinder(dni).matchEntireCell(true).findAll()
-    .map(c => hoja.getRange(c.getRow(), 1, 1, m._ancho).getValues()[0])
-    .filter(f => Number(f[m['ID']]) !== Number(excluir || 0));
-  if (!filas.length) return { ok: true, cantidad: 0 };
-  const ultima = filas.reduce((a, b) => (Number(b[m['ID']]) > Number(a[m['ID']]) ? b : a));
-  const fecha = ultima[m['Fecha de carga']];
-  return {
-    ok: true,
-    cantidad: filas.length,
-    ultimo: {
-      id: Number(ultima[m['ID']]),
-      secretaria: String(ultima[m['Secretaría']]),
-      fecha: fecha instanceof Date ? fecha.toISOString() : String(fecha),
-    },
-  };
+  const resultados = filasDe_(hoja, m, CAMPO_[clave].columna, valor)
+    .map(f => ficha_(hoja, m, f, u).ficha)
+    .filter(f => f.ref !== excluirRef)
+    .sort((a, b) => (a.fecha < b.fecha ? 1 : -1))
+    .slice(0, 10);
+  return { ok: true, resultados: resultados };
+}
+
+/** Suma o corrige datos de una ficha existente. Solo se aceptan los campos de la acción elegida. */
+function actualizar_(u, ref, accion, cambios) {
+  const def = ACCIONES[accion];
+  if (!def) throw errorPublico_('Acción inválida.');
+  cambios = cambios || {};
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const hoja = hoja_(CONFIG.HOJA_REGISTROS);
+    const m = columnas_(hoja);
+    const fila = filaDeRef_(hoja, m, ref);
+    if (!fila) throw errorPublico_('No se encontró la ficha.');
+    const actual = ficha_(hoja, m, fila, u).ficha.datos;
+
+    const mezcla = Object.assign({}, actual);
+    def.campos.forEach(k => { if (k in cambios) mezcla[k] = cambios[k]; });
+    const tocados = def.campos.filter(k => (k in cambios) && String(cambios[k] == null ? '' : cambios[k]).trim() !== (actual[k] || ''));
+    if (!tocados.length) throw errorPublico_('No hay cambios para guardar.');
+    const nuevo = normalizar_(mezcla, { validar: tocados });
+
+    if (accion === 'telefono' && !def.campos.some(k => nuevo[k] && nuevo[k] !== actual[k])) throw errorPublico_('Escribí el teléfono nuevo.');
+    if (accion === 'domicilio' && !nuevo.calle && !nuevo.barrio) throw errorPublico_('Escribí el nuevo domicilio.');
+    if (tocados.indexOf('dni') >= 0 || tocados.indexOf('cuit') >= 0) verificarUnico_(hoja, m, nuevo, u, fila);
+
+    aplicarCambios_(hoja, m, fila, u, def.nombre, actual, nuevo);
+    return { ok: true, datos: nuevo };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /* ========================== Estadísticas ========================== */
@@ -311,7 +469,7 @@ function estadisticas_(u, desde, hasta) {
       fecha: fecha,
       clave: isNaN(fecha.getTime()) ? '' : Utilities.formatDate(fecha, CONFIG.ZONA_HORARIA, 'yyyy-MM-dd'),
       secretaria: String(f[m['Secretaría']] || 'Sin secretaría'),
-      celular: String(f[m['Teléfono celular']]).trim(),
+      celular: String(f[m['Teléfono celular']]).trim() || String(f[m['Teléfono celular 2']] || '').trim(),
       mail: String(f[m['Mail']]).trim(),
       vinculo: String(f[m['Vínculo']] || ''),
     };
@@ -410,15 +568,22 @@ function setup() {
   prepararHoja_(ss, CONFIG.HOJA_USUARIOS, COLUMNAS_USUARIOS, h => {
     h.hideColumns(6, 2); // Salt y Hash
   });
+  prepararHoja_(ss, CONFIG.HOJA_HISTORIAL, COLUMNAS_HISTORIAL, h => {
+    h.getRange('A:A').setNumberFormat('dd/mm/yyyy hh:mm');
+  });
+  prepararHoja_(ss, CONFIG.HOJA_BARRIOS, ['Barrio'], h => {
+    h.getRange(2, 1, BARRIOS_INICIALES.length, 1).setValues(BARRIOS_INICIALES.map(b => [b]));
+    h.setColumnWidth(1, 280);
+  });
   // Protección: solo el dueño puede editar (el script corre como el dueño).
-  [CONFIG.HOJA_REGISTROS, CONFIG.HOJA_USUARIOS].forEach(n => {
+  [CONFIG.HOJA_REGISTROS, CONFIG.HOJA_USUARIOS, CONFIG.HOJA_HISTORIAL, CONFIG.HOJA_BARRIOS].forEach(n => {
     const h = ss.getSheetByName(n);
     if (h.getProtections(SpreadsheetApp.ProtectionType.SHEET).length) return;
     const p = h.protect().setDescription('Solo administrador');
     p.removeEditors(p.getEditors());
   });
   const hoja1 = ss.getSheetByName('Hoja 1') || ss.getSheetByName('Sheet1');
-  if (hoja1 && ss.getSheets().length > 2 && hoja1.getLastRow() === 0) ss.deleteSheet(hoja1);
+  if (hoja1 && ss.getSheets().length > 4 && hoja1.getLastRow() === 0) ss.deleteSheet(hoja1);
   try { SpreadsheetApp.getUi().alert('Listo. Ahora creá los usuarios desde el menú Contribuyentes.'); } catch (e) { /* ejecutado desde el editor */ }
 }
 

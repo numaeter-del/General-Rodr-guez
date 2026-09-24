@@ -17,8 +17,11 @@ Aplicación web para que las secretarías del municipio carguen datos de contrib
 
 | | Perfil **Carga** | Perfil **Análisis** |
 |---|:-:|:-:|
-| Cargar registros | ✓ | ✓ |
+| Buscar fichas (DNI, CUIT/CUIL, partida inmueble o comercio) | ✓ | ✓ |
+| Cargar registros nuevos | ✓ | ✓ |
+| Sumar un teléfono, un nuevo domicilio o corregir un dato de una ficha existente | ✓ | ✓ |
 | Editar la última carga (hasta hacer una nueva) | ✓ | ✓ |
+| Ver números de carga / cantidad de cargas | — | ✓ |
 | Estadísticas y gráficos, con filtro por período | — | ✓ |
 | Ver la planilla completa | — | — (solo el administrador) |
 
@@ -30,10 +33,12 @@ Aplicación web para que las secretarías del municipio carguen datos de contrib
 | DNI | 7 u 8 números | `12345678` | `12.345.678` |
 | CUIT/CUIL | 11 números con prefijo y dígito verificador válidos; debe coincidir con el DNI | `20123456786` | `20-12345678-6` |
 | Teléfono celular | 10 números: área (sin 0) + número (sin 15) | `1122334455` | `011 15 2233-4455` |
+| Teléfono celular 2 *(opcional)* | mismo formato; distinto del celular 1 | `2374556677` | |
 | Mail | usuario@dominio.ext | `hola@net.com` | `hola@net`, `hola @net.com` |
 | Domicilio (calle) | solo texto; se permite número **al inicio** | `25 de Mayo` | `Rivadavia 1154` |
 | Nro. | solo números, o casilla **S/N** | `1154` | `11a` |
-| Barrio | letras, números, espacios y puntos | `Vista Linda` | comas, guiones, símbolos |
+| Barrio | se elige de la lista (se filtra al escribir); si no está, **Otro** | | barrios fuera de la lista |
+| Nombre del barrio (solo si es «Otro») | letras, números, espacios y puntos | `Vista Linda` | comas, guiones, símbolos |
 | Piso / Depto. *(opcional)* | letras y números (se pasa a mayúsculas) | `3 B`, `PB 2` | `3-B`, `3/B` |
 | ¿A quién corresponden los datos? | Titular, Destinatario, Inquilino, Familiar | | |
 | Parentesco (solo si es Familiar) | Hijo/a, Esposo/a, Hermano/a, Padre/Madre, Otro | | |
@@ -44,7 +49,25 @@ Aplicación web para que las secretarías del municipio carguen datos de contrib
 
 Los campos opcionales están al final del formulario (Datos complementarios y Comentarios) y no se reclaman al guardar.
 
-**DNI ya cargado.** Al completar el DNI, la app consulta si ya existe en la base y, si existe, avisa en ámbar cuántas cargas tiene y cuál fue la última (número, secretaría y fecha). Es solo un aviso: se puede guardar igual, porque una misma persona puede figurar en distintos trámites.
+## Cómo se carga (flujo para evitar duplicados)
+1. **Buscar.** Arriba de todo está el buscador: por DNI, CUIT/CUIL, Partida inmueble o Partida comercio (coincidencia exacta).
+2. **Si la ficha existe**, se toca *Actualizar esta ficha* y una ventana pregunta qué hacer:
+   - **Agregar un teléfono**: se habilita solo el Teléfono celular 2 (o el 1, si estaba vacío).
+   - **Cargar un nuevo domicilio**: se habilitan solo Calle, Nro., Barrio y Piso/Depto. El domicilio anterior queda en el historial.
+   - **Corregir o completar un dato**: todo queda bloqueado y cada campo tiene un botón **Corregir** para habilitar solo ese.
+3. **Si no existe**, se toca **Realizar nueva carga**. El dato buscado ya aparece completado.
+
+**No se pueden crear dos fichas con el mismo DNI o CUIT/CUIL.** Si en una carga nueva se escribe un DNI o un CUIT/CUIL que ya existe, aparece en el centro de la pantalla una ventana con la ficha existente y las mismas tres opciones. El servidor también lo controla.
+
+**Historial.** Cada cambio sobre una ficha queda registrado en la hoja **Historial**: fecha, usuario, secretaría, acción, campo, valor anterior y valor nuevo. Nada se pierde al reemplazar un domicilio o un teléfono.
+
+**Números de carga.** El perfil Carga no ve números de carga ni cuántas cargas hay en la base. El servidor directamente no le envía esos datos.
+
+## Lista de barrios
+Los barrios salen de la hoja **Barrios** de la planilla: una columna, un barrio por fila. Para agregar, corregir o quitar barrios se edita esa hoja, sin tocar el código; la app la lee cada vez que alguien inicia sesión.
+
+> ⚠️ El listado que trae `setup` es **provisorio** (unos pocos barrios de ejemplo). Hay que reemplazarlo por el **listado oficial** del municipio (Catastro / Planeamiento).
+
 
 Al tocar **Guardar** con campos vacíos aparece: *«Faltó cargar … ¿Querés guardar igual?»* con **Guardar** / **No guardar**. Con *No guardar* se vuelve al formulario con los campos faltantes en rojo.
 
@@ -55,6 +78,7 @@ Si `frontend/assets/config.js` tiene `API_URL: ''`, la app funciona en **modo de
 ```bash
 cd frontend && python3 -m http.server 8080
 # abrir http://localhost:8080 — usuarios: carga / analisis, contraseña: demo1234
+# fichas de prueba para el buscador: DNI 20111222 y 25333444
 ```
 
 ## Puesta en marcha (producción)
@@ -96,7 +120,8 @@ Las columnas de la hoja `Registros` se ubican **por su nombre**, no por su posic
 - La planilla no se comparte: el script corre con la cuenta del dueño y los usuarios nunca la ven. El perfil Análisis recibe solo totales, no datos personales.
 - Las contraseñas se guardan con *hash* + *salt* (nunca en texto plano). Tras 5 intentos fallidos el usuario queda bloqueado 15 minutos.
 - Las sesiones vencen a las 6 h y se cierran al cerrar la pestaña.
-- El servidor vuelve a validar todos los formatos (no alcanza con saltearse el navegador) y controla que solo se edite la **última** carga de cada usuario.
+- El servidor vuelve a validar todos los formatos (no alcanza con saltearse el navegador), controla que solo se edite la **última** carga de cada usuario y que cada actualización toque solo los campos de la acción elegida.
+- La búsqueda es solo por coincidencia exacta de DNI, CUIT/CUIL o partida: no se puede recorrer la base ni buscar por apellido.
 - Las hojas quedan protegidas contra edición de terceros.
 
 ## Estructura

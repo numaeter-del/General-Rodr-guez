@@ -56,6 +56,8 @@
       <symbol id="i-store" viewBox="0 0 24 24"><path d="M4 4h16l1.5 5h-19z"/><path d="M4.5 9v11h15V9M9.5 20v-5h5v5"/></symbol>
       <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
       <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 10.5h7M8.5 13.5h4"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
       <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M10 13h4M7 16h10"/></symbol>
     </defs>
   </svg>
@@ -92,7 +94,8 @@
       <div id="aviso-demo" class="aviso-demo" hidden>
         <svg><use href="#i-info"/></svg>
         <div><strong>Modo demo</strong> — los datos quedan solo en este navegador.<br>
-          Usuarios: <code>carga</code> o <code>analisis</code> · contraseña <code>demo1234</code></div>
+          Usuarios: <code>carga</code> o <code>analisis</code> · contraseña <code>demo1234</code><br>
+          Para probar el buscador: DNI <code>20111222</code> o <code>25333444</code></div>
       </div>
       <p class="login-pie"><svg><use href="#i-shield"/></svg> Conexión segura · Acceso restringido</p>
     </div>
@@ -132,37 +135,73 @@
       <!-- ---------- Carga ---------- -->
       <section id="panel-carga" class="panel" role="tabpanel">
         <div class="carga-grid">
-          <form id="form-carga" class="tarjeta formulario" novalidate autocomplete="off">
-            <div class="form-cabecera">
+          <div class="columna-principal">
+            <!-- Buscador: siempre antes de cargar, para no duplicar fichas -->
+            <section class="tarjeta buscador" aria-labelledby="buscador-titulo">
               <div class="form-titulo">
-                <span class="form-titulo-icono"><svg><use href="#i-clipboard"/></svg></span>
+                <span class="form-titulo-icono"><svg><use href="#i-search"/></svg></span>
                 <div>
-                  <h2 id="form-titulo">Nueva carga</h2>
-                  <p id="form-subtitulo">Completá los datos respetando el formato indicado en cada campo.</p>
+                  <h2 id="buscador-titulo">Buscar contribuyente</h2>
+                  <p>Antes de cargar, buscá si ya existe una ficha para no duplicar datos.</p>
                 </div>
               </div>
-              <div class="progreso" aria-live="polite">
-                <div class="progreso-texto"><span id="progreso-valor">0</span> de <span id="progreso-total">9</span> campos</div>
-                <div class="progreso-barra"><span id="progreso-relleno"></span></div>
+              <form id="form-buscar" class="buscar-form" novalidate autocomplete="off">
+                <div class="buscar-tipos" role="radiogroup" aria-label="Buscar por">
+                  <button type="button" role="radio" class="buscar-tipo activo" data-tipo="dni" aria-checked="true">DNI</button>
+                  <button type="button" role="radio" class="buscar-tipo" data-tipo="cuit" aria-checked="false">CUIT / CUIL</button>
+                  <button type="button" role="radio" class="buscar-tipo" data-tipo="partidaInmueble" aria-checked="false">Partida inmueble</button>
+                  <button type="button" role="radio" class="buscar-tipo" data-tipo="partidaComercio" aria-checked="false">Partida comercio</button>
+                </div>
+                <div class="campo" id="buscar-campo">
+                  <div class="campo-formato"><svg><use href="#i-info"/></svg><span id="buscar-formato"></span></div>
+                  <div class="buscar-fila">
+                    <div class="control">
+                      <svg class="control-icono"><use href="#i-search"/></svg>
+                      <input id="buscar-valor" inputmode="numeric" autocomplete="off" spellcheck="false">
+                    </div>
+                    <button type="submit" class="btn btn-primario" id="btn-buscar"><svg><use href="#i-search"/></svg><span>Buscar</span></button>
+                  </div>
+                  <div class="campo-msg" id="buscar-msg" role="alert"><svg><use href="#i-alert-circle"/></svg><span></span></div>
+                </div>
+              </form>
+              <div id="buscar-resultados" class="buscar-resultados" aria-live="polite"></div>
+              <div class="buscador-pie">
+                <button type="button" class="btn btn-nueva" id="btn-nueva-carga"><svg><use href="#i-plus"/></svg><span>Realizar nueva carga</span></button>
               </div>
-            </div>
+            </section>
 
-            <div id="banner-edicion" class="banner-edicion" hidden>
-              <svg><use href="#i-pencil"/></svg>
-              <span>Estás editando la carga <strong id="banner-id"></strong>. Guardá los cambios o cancelá la edición.</span>
-            </div>
-
-            <div id="grupos"></div>
-
-            <div class="form-acciones">
-              <p class="atajo"><svg><use href="#i-keyboard"/></svg> <kbd>Enter</kbd> pasa al siguiente campo</p>
-              <div class="form-botones">
-                <button type="button" class="btn btn-secundario" id="btn-limpiar"><svg><use href="#i-reset"/></svg><span>Limpiar</span></button>
-                <button type="button" class="btn btn-secundario" id="btn-cancelar-edicion" hidden><svg><use href="#i-x"/></svg><span>Cancelar edición</span></button>
-                <button type="submit" class="btn btn-primario" id="btn-guardar"><svg><use href="#i-save"/></svg><span>Guardar</span></button>
+            <form id="form-carga" class="tarjeta formulario" novalidate autocomplete="off" hidden>
+              <div class="form-cabecera">
+                <div class="form-titulo">
+                  <span class="form-titulo-icono" id="form-titulo-icono"><svg><use href="#i-clipboard"/></svg></span>
+                  <div>
+                    <h2 id="form-titulo">Nueva carga</h2>
+                    <p id="form-subtitulo">Completá los datos respetando el formato indicado en cada campo.</p>
+                  </div>
+                </div>
+                <div class="progreso" aria-live="polite">
+                  <div class="progreso-texto"><span id="progreso-valor">0</span> de <span id="progreso-total">9</span> campos</div>
+                  <div class="progreso-barra"><span id="progreso-relleno"></span></div>
+                </div>
               </div>
-            </div>
-          </form>
+
+              <div id="banner-edicion" class="banner-edicion" hidden>
+                <span id="banner-icono"><svg><use href="#i-pencil"/></svg></span>
+                <span id="banner-texto"></span>
+              </div>
+
+              <div id="grupos"></div>
+
+              <div class="form-acciones">
+                <p class="atajo"><svg><use href="#i-keyboard"/></svg> <kbd>Enter</kbd> pasa al siguiente campo</p>
+                <div class="form-botones">
+                  <button type="button" class="btn btn-secundario" id="btn-limpiar"><svg><use href="#i-reset"/></svg><span>Limpiar</span></button>
+                  <button type="button" class="btn btn-secundario" id="btn-cancelar-edicion"><svg><use href="#i-x"/></svg><span>Cancelar</span></button>
+                  <button type="submit" class="btn btn-primario" id="btn-guardar"><svg><use href="#i-save"/></svg><span>Guardar</span></button>
+                </div>
+              </div>
+            </form>
+          </div>
 
           <aside class="lateral">
             <div class="tarjeta ultima" id="tarjeta-ultima">
@@ -171,7 +210,8 @@
                 <p>Todavía no guardaste ninguna carga en esta sesión.</p>
               </div>
               <div id="ultima-datos" hidden>
-                <div class="ultima-id"><span id="ultima-id"></span><span class="ultima-hora" id="ultima-hora"></span></div>
+                <div class="ultima-id"><span id="ultima-id"></span><span class="ultima-num" id="ultima-num" hidden></span></div>
+                <p class="ultima-hora" id="ultima-hora"></p>
                 <dl class="ultima-lista" id="ultima-lista"></dl>
                 <button type="button" class="btn btn-editar btn-bloque" id="btn-editar"><svg><use href="#i-pencil"/></svg><span>Editar</span></button>
                 <p class="ultima-nota">Podés editarla hasta que guardes una carga nueva.</p>
@@ -180,10 +220,15 @@
 
             <div class="tarjeta sesion-resumen">
               <div class="lateral-titulo"><svg><use href="#i-building"/></svg> <span id="lateral-secretaria">Secretaría</span></div>
-              <div class="contador">
+              <div class="contador" id="bloque-contador" hidden>
                 <strong id="contador-sesion">0</strong>
                 <span>cargas guardadas<br>en esta sesión</span>
               </div>
+              <ol class="pasos">
+                <li><strong>Buscá</strong> al contribuyente por DNI, CUIT/CUIL o partida.</li>
+                <li>Si <strong>ya existe</strong>, sumá o corregí datos en su ficha.</li>
+                <li>Si <strong>no existe</strong>, tocá «Realizar nueva carga».</li>
+              </ol>
             </div>
           </aside>
         </div>
@@ -243,6 +288,18 @@
       <button type="button" class="btn btn-secundario" id="modal-no"></button>
       <button type="button" class="btn btn-primario" id="modal-si"></button>
     </div>
+  </dialog>
+
+  <!-- Ventana grande: ficha existente → ¿qué querés hacer? -->
+  <dialog id="modal-opciones" class="modal modal-grande" aria-labelledby="mo-titulo">
+    <button type="button" class="modal-cerrar btn-icono" id="mo-cerrar" aria-label="Cerrar"><svg><use href="#i-x"/></svg></button>
+    <div class="modal-icono" id="mo-icono"><svg><use href="#i-alert"/></svg></div>
+    <h3 id="mo-titulo"></h3>
+    <p id="mo-texto" class="modal-texto"></p>
+    <div id="mo-ficha" class="mo-ficha"></div>
+    <p class="pregunta" id="mo-pregunta"></p>
+    <div class="opciones" id="mo-opciones"></div>
+    <div class="modal-botones"><button type="button" class="btn btn-secundario" id="mo-cancelar"><span>Cancelar</span></button></div>
   </dialog>
 
   <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
