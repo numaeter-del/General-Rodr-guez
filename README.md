@@ -1,4 +1,4 @@
-# Base Integral de Contribuyentes — General Rodríguez
+# Red Central de Datos — General Rodríguez
 
 Aplicación web para que las secretarías del municipio carguen datos de contribuyentes en **una única base de datos segura** (una Google Sheet a la que solo accede su dueño).
 
@@ -84,7 +84,7 @@ cd frontend && python3 -m http.server 8080
 ## Puesta en marcha (producción)
 
 ### 1. Crear la base de datos y el backend
-1. Con la cuenta de Google que será **dueña de los datos**, crear una Google Sheet nueva (por ejemplo «Base Contribuyentes»). **No compartirla.**
+1. Con la cuenta de Google que será **dueña de los datos**, crear una Google Sheet nueva (por ejemplo «Red Central de Datos»). **No compartirla.**
 2. En la planilla: **Extensiones → Apps Script**. Borrar el contenido y pegar `backend/Code.gs`. Guardar.
 3. En el editor elegir la función `setup` y tocar **Ejecutar**. Aceptar los permisos. Se crean las hojas `Registros` y `Usuarios`.
 4. **Implementar → Nueva implementación → Tipo: Aplicación web**
@@ -93,7 +93,7 @@ cd frontend && python3 -m http.server 8080
 5. Copiar la URL que termina en `/exec`.
 
 ### 2. Crear los usuarios
-Volver a la planilla y recargarla: aparece el menú **Contribuyentes**.
+Volver a la planilla y recargarla: aparece el menú **Red Central de Datos**.
 - **Crear usuario…** pide usuario, nombre, secretaría, perfil (1 = Carga, 2 = Análisis) y contraseña (mínimo 8 caracteres).
 - **Cambiar contraseña…** y **Activar / desactivar usuario…** para la administración diaria.
 
@@ -104,7 +104,7 @@ La secretaría de cada registro se toma **del usuario que lo carga**, así no se
 2. Subir el contenido de `frontend/` a su servidor (idealmente con **HTTPS**).
 
 ### 4. Respaldo en .xlsx
-Menú **Contribuyentes → Programar respaldo .xlsx diario**: todas las noches guarda una copia `.xlsx` en la carpeta privada «Respaldos Base Contribuyentes» de su Drive. También se puede descargar en cualquier momento con *Archivo → Descargar → Microsoft Excel (.xlsx)*.
+Menú **Red Central de Datos → Programar respaldo .xlsx diario**: todas las noches guarda una copia `.xlsx` en la carpeta privada «Respaldos Red Central de Datos» de su Drive. También se puede descargar en cualquier momento con *Archivo → Descargar → Microsoft Excel (.xlsx)*.
 
 ### Actualizar el backend
 Después de modificar `Code.gs`: **Implementar → Administrar implementaciones → editar (lápiz) → Versión: Nueva versión**. Así la URL no cambia.

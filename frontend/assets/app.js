@@ -1,5 +1,5 @@
 /* =====================================================================
-   Base Integral de Contribuyentes — General Rodríguez
+   Red Central de Datos — General Rodríguez
    Lógica del frontend: login, formulario con validación estricta,
    guardado / edición y panel de estadísticas.
    ===================================================================== */
@@ -1816,7 +1816,7 @@
 
   /* ============================ INICIO ============================ */
   async function iniciar() {
-    document.title = `${CFG.NOMBRE_APP || 'Base Integral de Contribuyentes'} · General Rodríguez`;
+    document.title = `${CFG.NOMBRE_APP || 'Red Central de Datos'} · General Rodríguez`;
     construirFormulario();
     prepararBuscador();
     cerrarFormulario();

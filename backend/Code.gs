@@ -1,5 +1,5 @@
 /**
- * Base Integral de Contribuyentes — Municipalidad de General Rodríguez
+ * Red Central de Datos — Municipalidad de General Rodríguez
  * Backend en Google Apps Script (API JSON + administración desde la planilla).
  *
  * Cómo se usa (ver README.md para el paso a paso):
@@ -22,7 +22,7 @@ const CONFIG = {
   SESION_SEGUNDOS: 6 * 60 * 60,      // 6 h (máximo de CacheService)
   MAX_INTENTOS_LOGIN: 5,
   BLOQUEO_LOGIN_SEGUNDOS: 15 * 60,
-  CARPETA_RESPALDOS: 'Respaldos Base Contribuyentes',
+  CARPETA_RESPALDOS: 'Respaldos Red Central de Datos',
   ZONA_HORARIA: 'America/Argentina/Buenos_Aires',
 };
 
@@ -92,7 +92,7 @@ const COLUMNAS_HISTORIAL = ['Fecha', 'Usuario', 'Secretaría', 'ID', 'Acción', 
 /* ============================== API ============================== */
 
 function doGet() {
-  return json_({ ok: true, servicio: 'Base Integral de Contribuyentes', version: 3 });
+  return json_({ ok: true, servicio: 'Red Central de Datos', version: 3 });
 }
 
 function doPost(e) {
@@ -545,7 +545,7 @@ function calcularEstadisticas_(regs, desde, hasta, hoy) {
 
 function onOpen() {
   SpreadsheetApp.getUi()
-    .createMenu('Contribuyentes')
+    .createMenu('Red Central de Datos')
     .addItem('Preparar hojas', 'setup')
     .addSeparator()
     .addItem('Crear usuario…', 'menuCrearUsuario')
@@ -584,7 +584,7 @@ function setup() {
   });
   const hoja1 = ss.getSheetByName('Hoja 1') || ss.getSheetByName('Sheet1');
   if (hoja1 && ss.getSheets().length > 4 && hoja1.getLastRow() === 0) ss.deleteSheet(hoja1);
-  try { SpreadsheetApp.getUi().alert('Listo. Ahora creá los usuarios desde el menú Contribuyentes.'); } catch (e) { /* ejecutado desde el editor */ }
+  try { SpreadsheetApp.getUi().alert('Listo. Ahora creá los usuarios desde el menú Red Central de Datos.'); } catch (e) { /* ejecutado desde el editor */ }
 }
 
 function prepararHoja_(ss, nombre, columnas, extra) {
@@ -672,7 +672,7 @@ function respaldoXlsx() {
   const url = 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/export?format=xlsx';
   const blob = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() } }).getBlob();
   const fecha = Utilities.formatDate(new Date(), CONFIG.ZONA_HORARIA, 'yyyy-MM-dd_HHmm');
-  blob.setName('Base_Contribuyentes_' + fecha + '.xlsx');
+  blob.setName('Red_Central_de_Datos_' + fecha + '.xlsx');
   const carpetas = DriveApp.getFoldersByName(CONFIG.CARPETA_RESPALDOS);
   const carpeta = carpetas.hasNext() ? carpetas.next() : DriveApp.createFolder(CONFIG.CARPETA_RESPALDOS);
   carpeta.createFile(blob);

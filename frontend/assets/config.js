@@ -10,6 +10,6 @@
  */
 window.APP_CONFIG = {
   API_URL: '',
-  NOMBRE_APP: 'Base Integral de Contribuyentes',
+  NOMBRE_APP: 'Red Central de Datos',
   ORGANISMO: 'Municipalidad de General Rodríguez',
 };
