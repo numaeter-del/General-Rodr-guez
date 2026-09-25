@@ -1,0 +1,5 @@
+config.json
+datos/
+respaldos/
+*.pfx
+*.pem

@@ -58,6 +58,12 @@
       <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 10.5h7M8.5 13.5h4"/></symbol>
       <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
       <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 9.3-9.3M17 6l3 3M14.5 8.5l2.5 2.5"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 19h16"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5M4 19h16"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></symbol>
+      <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.8-1.2"/></symbol>
       <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M10 13h4M7 16h10"/></symbol>
     </defs>
   </svg>
@@ -91,10 +97,49 @@
         </button>
       </form>
 
+      <!-- Paso: contraseña propia (primer ingreso o contraseña restablecida) -->
+      <form id="paso-clave" class="login-form paso" novalidate hidden>
+        <div class="paso-cabecera"><span class="paso-icono"><svg><use href="#i-key"/></svg></span>
+          <div><strong>Elegí tu contraseña</strong><span>Es tu primer ingreso o se restableció tu contraseña.</span></div></div>
+        <label class="login-campo"><span>Contraseña nueva</span>
+          <div class="control"><svg class="control-icono"><use href="#i-lock"/></svg><input id="clave-nueva" type="password" autocomplete="new-password"></div></label>
+        <label class="login-campo"><span>Repetila</span>
+          <div class="control"><svg class="control-icono"><use href="#i-lock"/></svg><input id="clave-repetir" type="password" autocomplete="new-password"></div></label>
+        <p class="paso-ayuda">Al menos 10 caracteres, combinando letras y números. Es personal: no la compartas con nadie.</p>
+        <p class="login-error" role="alert" hidden></p>
+        <button type="submit" class="btn btn-primario btn-bloque"><span>Guardar contraseña</span></button>
+      </form>
+
+      <!-- Paso: activar el doble factor (solo la primera vez) -->
+      <form id="paso-config2fa" class="login-form paso" novalidate hidden>
+        <div class="paso-cabecera"><span class="paso-icono"><svg><use href="#i-shield"/></svg></span>
+          <div><strong>Activá el doble factor</strong><span>Además de la contraseña, vas a necesitar un código del celular.</span></div></div>
+        <ol class="pasos-2fa">
+          <li>Instalá <strong>Microsoft Authenticator</strong> (o Google Authenticator) en tu celular.</li>
+          <li>Tocá <strong>Agregar cuenta → Otra cuenta</strong> y elegí <strong>escribir el código manualmente</strong>.</li>
+          <li>Nombre: <strong>Red Central de Datos</strong>. Clave:
+            <span class="secreto-2fa"><code id="secreto-2fa"></code><button type="button" class="btn-icono chico" id="copiar-secreto" title="Copiar" aria-label="Copiar clave"><svg><use href="#i-copy"/></svg></button></span></li>
+          <li>Escribí abajo el código de 6 números que muestra la aplicación.</li>
+        </ol>
+        <input class="codigo-2fa" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" aria-label="Código de 6 números">
+        <p class="login-error" role="alert" hidden></p>
+        <button type="submit" class="btn btn-primario btn-bloque"><span>Activar y entrar</span></button>
+      </form>
+
+      <!-- Paso: código del doble factor -->
+      <form id="paso-codigo" class="login-form paso" novalidate hidden>
+        <div class="paso-cabecera"><span class="paso-icono"><svg><use href="#i-shield"/></svg></span>
+          <div><strong>Código de verificación</strong><span>Abrí tu aplicación de autenticación y escribí el código de 6 números.</span></div></div>
+        <input class="codigo-2fa" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" aria-label="Código de 6 números">
+        <p class="login-error" role="alert" hidden></p>
+        <button type="submit" class="btn btn-primario btn-bloque"><span>Verificar</span></button>
+      </form>
+      <button type="button" class="enlace" id="volver-login" hidden>← Volver a empezar</button>
+
       <div id="aviso-demo" class="aviso-demo" hidden>
         <svg><use href="#i-info"/></svg>
         <div><strong>Modo demo</strong> — los datos quedan solo en este navegador.<br>
-          Usuarios: <code>carga</code> o <code>analisis</code> · contraseña <code>demo1234</code><br>
+          Usuarios: <code>carga</code>, <code>analisis</code> o <code>admin</code> · contraseña <code>demo1234</code><br>
           Para probar el buscador: DNI <code>20111222</code> o <code>25333444</code></div>
       </div>
       <p class="login-pie"><svg><use href="#i-shield"/></svg> Conexión segura · Acceso restringido</p>
@@ -115,6 +160,7 @@
       <nav class="pestanas" id="pestanas" role="tablist" hidden>
         <button role="tab" class="pestana activa" data-vista="carga" aria-selected="true"><svg><use href="#i-clipboard"/></svg><span>Carga de datos</span></button>
         <button role="tab" class="pestana" data-vista="estadisticas" aria-selected="false"><svg><use href="#i-chart"/></svg><span>Estadísticas</span></button>
+        <button role="tab" class="pestana" data-vista="admin" aria-selected="false" id="pestana-admin" hidden><svg><use href="#i-settings"/></svg><span>Administración</span></button>
       </nav>
 
       <div class="barra-usuario">
@@ -127,6 +173,7 @@
             <span id="usuario-detalle">—</span>
           </div>
         </div>
+        <button class="btn-icono" id="btn-mi-clave" title="Cambiar mi contraseña" aria-label="Cambiar mi contraseña"><svg><use href="#i-key"/></svg></button>
         <button class="btn-icono" id="btn-salir" title="Cerrar sesión" aria-label="Cerrar sesión"><svg><use href="#i-logout"/></svg></button>
       </div>
     </header>
@@ -276,6 +323,46 @@
           </article>
         </div>
       </section>
+      <!-- ---------- Administración (solo perfil Administrador) ---------- -->
+      <section id="panel-admin" class="panel" role="tabpanel" hidden>
+        <div class="stats-cabecera">
+          <div>
+            <h2>Administración</h2>
+            <p>Tu llave maestra: integridad de los datos, usuarios, respaldos y exportación.</p>
+          </div>
+          <button class="btn btn-secundario" id="btn-admin-actualizar"><svg><use href="#i-refresh"/></svg><span>Actualizar</span></button>
+        </div>
+        <div id="admin-alerta"></div>
+        <div class="admin-estado" id="admin-estado"></div>
+        <div class="admin-grid">
+          <article class="tarjeta admin-card admin-ancho">
+            <header class="admin-card-cab"><div><h3>Usuarios</h3><p>Altas, contraseñas, bloqueos y permisos.</p></div>
+              <button class="btn btn-primario" id="btn-usuario-nuevo"><svg><use href="#i-plus"/></svg><span>Nuevo usuario</span></button></header>
+            <div class="tabla-envoltorio"><table class="tabla" id="tabla-usuarios"></table></div>
+          </article>
+          <article class="tarjeta admin-card">
+            <header class="admin-card-cab"><div><h3>Respaldos y exportación</h3><p>Copias cifradas que solo se abren con tu llave.</p></div></header>
+            <div id="admin-respaldos"></div>
+          </article>
+          <article class="tarjeta admin-card">
+            <header class="admin-card-cab"><div><h3>Barrios</h3><p>Un barrio por renglón. Así aparecen en el formulario.</p></div></header>
+            <textarea id="admin-barrios" class="admin-textarea" rows="12" spellcheck="false"></textarea>
+            <div class="admin-pie"><span id="admin-barrios-cuenta"></span>
+              <button class="btn btn-primario" id="btn-barrios-guardar"><svg><use href="#i-save"/></svg><span>Guardar barrios</span></button></div>
+          </article>
+          <article class="tarjeta admin-card admin-ancho">
+            <header class="admin-card-cab"><div><h3>Actividad</h3><p>Quién hizo qué y cuándo. No se puede borrar ni modificar.</p></div>
+              <div class="actividad-filtros">
+                <div class="buscar-tipos" role="radiogroup" aria-label="Tipo de actividad">
+                  <button type="button" role="radio" class="buscar-tipo activo" data-actividad="accesos" aria-checked="true">Accesos y búsquedas</button>
+                  <button type="button" role="radio" class="buscar-tipo" data-actividad="historial" aria-checked="false">Cambios en los datos</button>
+                </div>
+                <input id="actividad-usuario" class="input-chico" placeholder="Filtrar por usuario" autocomplete="off" spellcheck="false">
+              </div></header>
+            <div class="tabla-envoltorio alto"><table class="tabla" id="tabla-actividad"></table></div>
+          </article>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -300,6 +387,21 @@
     <p class="pregunta" id="mo-pregunta"></p>
     <div class="opciones" id="mo-opciones"></div>
     <div class="modal-botones"><button type="button" class="btn btn-secundario" id="mo-cancelar"><span>Cancelar</span></button></div>
+  </dialog>
+
+  <!-- Ventana genérica con formulario (usuarios, códigos, llaves…) -->
+  <dialog id="modal-form" class="modal modal-form" aria-labelledby="mf-titulo">
+    <form id="mf-form" novalidate>
+      <button type="button" class="modal-cerrar btn-icono" id="mf-cerrar" aria-label="Cerrar"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-icono info" id="mf-icono"></div>
+      <h3 id="mf-titulo"></h3>
+      <div id="mf-cuerpo" class="mf-cuerpo"></div>
+      <p class="login-error" id="mf-error" role="alert" hidden></p>
+      <div class="modal-botones">
+        <button type="button" class="btn btn-secundario" id="mf-cancelar"><span>Cancelar</span></button>
+        <button type="submit" class="btn btn-primario" id="mf-aceptar"><span>Aceptar</span></button>
+      </div>
+    </form>
   </dialog>
 
   <div id="tooltip" class="tooltip" role="tooltip" hidden></div>

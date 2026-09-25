@@ -1,6 +1,7 @@
 /**
  * Red Central de Datos — Municipalidad de General Rodríguez
  * Backend en Google Apps Script (API JSON + administración desde la planilla).
+ * VERSIÓN DE PRUEBA, SIN MANTENIMIENTO: la versión recomendada es la del servidor municipal (carpeta servidor/).
  *
  * Cómo se usa (ver README.md para el paso a paso):
  *  1. Crear una Google Sheet nueva (NO compartirla con nadie).
@@ -110,7 +111,7 @@ function doPost(e) {
       case 'guardar': return json_(guardar_(sesion_(req.token), req.datos));
       case 'editar': return json_(editar_(sesion_(req.token), req.ref, req.datos));
       case 'buscar': return json_(buscar_(sesion_(req.token), req.tipo, req.valor, req.excluir));
-      case 'actualizar': return json_(actualizar_(sesion_(req.token), req.ref, req.accion, req.cambios));
+      case 'actualizar': return json_(actualizar_(sesion_(req.token), req.ref, req.que, req.cambios));
       case 'estadisticas': return json_(estadisticas_(sesion_(req.token), req.desde, req.hasta));
       default: return json_({ ok: false, error: 'Acción desconocida.' });
     }

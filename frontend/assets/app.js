@@ -347,13 +347,19 @@
       try {
         r = await fetch(CFG.API_URL, {
           method: 'POST',
-          // text/plain evita el "preflight" CORS, que Apps Script no admite.
+          // text/plain evita el "preflight" CORS (necesario para la versión en Google Apps Script).
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify(Object.assign({ accion, token: estado.sesion && estado.sesion.token }, datos)),
           redirect: 'follow',
         });
       } catch (e) {
         throw new Error('No se pudo conectar con el servidor. Revisá tu conexión a internet e intentá de nuevo.');
+      }
+      const tipo = r.headers.get('Content-Type') || '';
+      if (r.ok && !tipo.includes('json')) {
+        // Descargas (planilla, respaldos): se devuelve el archivo.
+        const nombre = ((r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/) || [])[1] || 'archivo';
+        return { ok: true, archivo: await r.blob(), nombre };
       }
       let j;
       try { j = await r.json(); } catch (e) { throw new Error('El servidor respondió de forma inesperada. Intentá de nuevo en unos minutos.'); }
@@ -368,16 +374,39 @@
     };
   }
 
+  /* Oculta parte de los datos de contacto a quien no es Administrador (igual que el servidor). */
+  function enmascarar(datos) {
+    const d = Object.assign({}, datos);
+    const ocultos = [];
+    ['celular', 'celular2'].forEach(k => { if (d[k]) { d[k] = d[k].slice(0, 2) + '****' + d[k].slice(-4); ocultos.push(k); } });
+    if (d.mail) { const [u, dom] = d.mail.split('@'); d.mail = u[0] + '***@' + dom; ocultos.push('mail'); }
+    if (d.comentarios) { d.comentarios = '(oculto)'; ocultos.push('comentarios'); }
+    return { datos: d, ocultos };
+  }
+
   function crearApiDemo() {
-    const USUARIOS = {
-      carga: { usuario: 'carga', nombre: 'Operador de Carga', perfil: 'Carga', secretaria: 'Secretaría de Ingresos Públicos' },
-      analisis: { usuario: 'analisis', nombre: 'Analista de Datos', perfil: 'Análisis', secretaria: 'Secretaría de Gobierno' },
-    };
+    const USUARIOS_INICIALES = [
+      { usuario: 'carga', nombre: 'Operador de Carga', perfil: 'Carga', secretaria: 'Secretaría de Ingresos Públicos' },
+      { usuario: 'analisis', nombre: 'Analista de Datos', perfil: 'Análisis', secretaria: 'Secretaría de Gobierno' },
+      { usuario: 'admin', nombre: 'Administración de la Red', perfil: 'Administrador', secretaria: 'Secretaría de Gobierno' },
+    ];
     const SECRETARIAS = ['Secretaría de Ingresos Públicos', 'Secretaría de Gobierno', 'Secretaría de Salud', 'Secretaría de Desarrollo Social', 'Secretaría de Obras Públicas'];
     const K = 'gr_demo_registros_v4'; // cambiar la versión regenera los datos de ejemplo
     const pausa = ms => new Promise(r => setTimeout(r, ms));
     const refNueva = () => Array.from({ length: 16 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
     const vacio = () => Object.fromEntries(CAMPOS.map(c => [c.id, '']));
+    const soloServidor = () => { throw new Error('En el modo demo no hay servidor: esta función se usa en el servidor municipal.'); };
+
+    const usuarios = () => almacen.get('gr_demo_usuarios', null, 'local')
+      || USUARIOS_INICIALES.map(u => Object.assign({ activo: 1, creado: new Date().toISOString(), ultimo_ingreso: '', doble_factor: u.perfil === 'Administrador' ? 1 : 0, bloqueado: false }, u));
+    const guardarUsuarios = l => almacen.set('gr_demo_usuarios', l, 'local');
+    const barrios = () => almacen.get('gr_demo_barrios', null, 'local') || BARRIOS_DEMO;
+    const accesos = () => almacen.get('gr_demo_accesos', [], 'local');
+    const log = (usuario, evento, detalle) => {
+      const l = accesos();
+      l.push({ n: (l.length ? l[l.length - 1].n : 0) + 1, fecha: new Date().toISOString(), usuario, ip: 'demo', evento, detalle: detalle || '' });
+      almacen.set('gr_demo_accesos', l.slice(-300), 'local');
+    };
 
     function registros() {
       let regs = almacen.get(K, null, 'local');
@@ -414,13 +443,20 @@
       return regs;
     }
     const sesion = () => {
-      const u = estado.sesion && USUARIOS[estado.sesion.usuario.usuario];
+      const u = estado.sesion && usuarios().find(x => x.usuario === estado.sesion.usuario.usuario && x.activo);
       if (!u) { const e = new Error('Tu sesión venció. Volvé a ingresar.'); e.sesionVencida = true; throw e; }
       return u;
     };
+    const publico = u => ({ usuario: u.usuario, nombre: u.nombre, perfil: u.perfil, secretaria: u.secretaria });
+    const exigir = (u, perfiles) => { if (!perfiles.includes(u.perfil)) throw new Error('Tu perfil no tiene permiso para esta acción.'); };
     const ficha = (r, u) => {
       const f = { ref: r.ref, fecha: r.fecha, secretaria: r.secretaria, datos: Object.fromEntries(CAMPOS.map(c => [c.id, r[c.id] || ''])) };
-      if (u.perfil === 'Análisis') f.id = r.id;
+      if (u.perfil !== 'Administrador') {
+        const m = enmascarar(f.datos);
+        f.datos = m.datos;
+        if (m.ocultos.length) f.ocultos = m.ocultos;
+      }
+      if (u.perfil !== 'Carga') f.id = r.id;
       return f;
     };
     const validar = (datos, claves) => {
@@ -441,24 +477,27 @@
       e.coincidencias = iguales.slice(0, 5).map(r => ficha(r, u));
       throw e;
     };
-    const config = () => ({ barrios: BARRIOS_DEMO });
+    const config = () => ({ barrios: barrios() });
 
     return async function llamar(accion, p = {}) {
-      await pausa(accion === 'estadisticas' ? 500 : 350);
+      await pausa(accion === 'estadisticas' || accion === 'adminResumen' ? 500 : 350);
       switch (accion) {
         case 'login': {
-          const u = USUARIOS[String(p.usuario || '').trim().toLowerCase()];
-          if (!u || p.clave !== 'demo1234') throw new Error('Usuario o contraseña incorrectos.');
-          return { ok: true, token: 'demo-' + Date.now(), usuario: u, config: config() };
+          const u = usuarios().find(x => x.usuario === String(p.usuario || '').trim().toLowerCase());
+          if (!u || !u.activo || p.clave !== 'demo1234') { log(u ? u.usuario : '(desconocido)', 'ingreso fallido', ''); throw new Error('Usuario o contraseña incorrectos.'); }
+          log(u.usuario, 'ingreso', '');
+          return { ok: true, token: 'demo-' + Date.now(), usuario: publico(u), config: config() };
         }
-        case 'sesion': return { ok: true, usuario: sesion(), config: config() };
+        case 'sesion': return { ok: true, usuario: publico(sesion()), config: config() };
         case 'logout': return { ok: true };
+        case 'cambiarClave': sesion(); soloServidor(); break;
         case 'buscar': {
           const u = sesion();
           const b = BUSQUEDAS[p.tipo];
           if (!b || !b.ok(String(p.valor || ''))) throw new Error('Dato de búsqueda inválido.');
           const resultados = registros().filter(r => r[p.tipo] === p.valor && r.ref !== p.excluir)
             .sort((a, b) => (a.fecha < b.fecha ? 1 : -1)).slice(0, 10).map(r => ficha(r, u));
+          log(u.usuario, 'búsqueda', `${b.etiqueta} ${p.valor} → ${resultados.length} resultado(s)`);
           return { ok: true, resultados };
         }
         case 'guardar': {
@@ -474,7 +513,7 @@
           almacen.set(K, regs, 'local');
           almacen.set('gr_demo_editable_' + u.usuario, id, 'local');
           const r = { ok: true, ref, fecha };
-          if (u.perfil === 'Análisis') r.id = id;
+          if (u.perfil !== 'Carga') r.id = id;
           return r;
         }
         case 'editar': {
@@ -493,7 +532,7 @@
         }
         case 'actualizar': {
           const u = sesion();
-          const permitidos = { telefono: ['celular', 'celular2'], domicilio: ['calle', 'numero', 'piso', 'barrio', 'barrioOtro'], correccion: CAMPOS.map(c => c.id) }[p.accion];
+          const permitidos = { telefono: ['celular', 'celular2'], domicilio: ['calle', 'numero', 'piso', 'barrio', 'barrioOtro'], correccion: CAMPOS.map(c => c.id) }[p.que];
           if (!permitidos) throw new Error('Acción inválida.');
           const regs = registros();
           const r = regs.find(x => x.ref === p.ref);
@@ -501,18 +540,88 @@
           const cambios = p.cambios || {};
           const tocados = permitidos.filter(k => k in cambios && String(cambios[k]).trim() !== (r[k] || ''));
           if (!tocados.length) throw new Error('No hay cambios para guardar.');
-          const nuevo = limpiarDependientes(Object.assign(ficha(r, u).datos, ...tocados.map(k => ({ [k]: String(cambios[k]).trim() }))));
+          const actual = Object.fromEntries(CAMPOS.map(c => [c.id, r[c.id] || '']));
+          const nuevo = limpiarDependientes(Object.assign(actual, ...tocados.map(k => ({ [k]: String(cambios[k]).trim() }))));
           validar(nuevo, tocados.flatMap(k => [k].concat(DEPENDIENTES[k] || [])));
           if (tocados.includes('dni') || tocados.includes('cuit')) verificarUnico(regs, nuevo, u, r.ref);
           Object.assign(r, nuevo, { editado: new Date().toISOString() });
           almacen.set(K, regs, 'local');
-          return { ok: true, datos: nuevo };
+          const f = ficha(r, u);
+          return { ok: true, datos: f.datos, ocultos: f.ocultos };
         }
         case 'estadisticas': {
-          if (sesion().perfil !== 'Análisis') throw new Error('Tu perfil no tiene acceso a estadísticas.');
+          exigir(sesion(), ['Análisis', 'Administrador']);
           const regs = registros().map(r => Object.assign({}, r, { fecha: new Date(r.fecha), clave: claveFecha(r.fecha), celular: r.celular || r.celular2 }));
           return Object.assign({ ok: true }, calcularEstadisticas(regs, p.desde, p.hasta, claveFecha(Date.now())));
         }
+        /* ----- Administración (simulada: sin servidor no hay cadena de auditoría real ni respaldos) ----- */
+        case 'adminResumen': {
+          exigir(sesion(), ['Administrador']);
+          const regs = registros();
+          const eventos = regs.length + 3;
+          const hash = ('d3m0' + eventos.toString(16)).padEnd(64, '0');
+          return {
+            ok: true, registros: regs.length, usuarios: usuarios().filter(u => u.activo).length,
+            verificacion: { ok: true, eventos, hash, problemas: [], fecha: new Date().toISOString() },
+            sello: p.sello ? { eventos: p.sello.eventos, hashGuardado: p.sello.hash, hashActual: p.sello.hash } : null,
+            respaldo: { llave: '', ultimo: '', hora: '23:00', carpeta: '(modo demo)', archivos: [] },
+            alertas: accesos().filter(a => /^ALERTA/.test(a.evento)).reverse(),
+            ingresosFallidos24h: accesos().filter(a => a.evento === 'ingreso fallido').length,
+            limiteBusquedasPorHora: 60,
+          };
+        }
+        case 'adminUsuarios': exigir(sesion(), ['Administrador']); return { ok: true, usuarios: usuarios() };
+        case 'adminUsuarioGuardar': {
+          const yo = sesion(); exigir(yo, ['Administrador']);
+          const d = p.datos || {};
+          const lista = usuarios();
+          const usuario = String(d.usuario || '').trim().toLowerCase();
+          if (!/^[a-z0-9._-]{3,30}$/.test(usuario)) throw new Error('Usuario inválido: de 3 a 30 caracteres, solo letras minúsculas, números, punto o guion.');
+          if (String(d.nombre || '').trim().length < 3) throw new Error('Escribí el nombre y apellido de la persona.');
+          if (String(d.secretaria || '').trim().length < 3) throw new Error('Indicá la secretaría.');
+          const existente = lista.find(x => x.usuario === usuario);
+          if (d.nuevo) {
+            if (existente) throw new Error('Ya existe un usuario con ese nombre.');
+            lista.push({ usuario, nombre: d.nombre.trim(), perfil: d.perfil, secretaria: d.secretaria.trim(), activo: 1, creado: new Date().toISOString(), ultimo_ingreso: '', doble_factor: 0, bloqueado: false, debe_cambiar_clave: 1 });
+            guardarUsuarios(lista);
+            log(yo.usuario, 'admin: alta de usuario', `${usuario} (${d.perfil})`);
+            return { ok: true, claveTemporal: 'demo1234' };
+          }
+          Object.assign(existente, { nombre: d.nombre.trim(), perfil: d.perfil, secretaria: d.secretaria.trim() });
+          guardarUsuarios(lista);
+          return { ok: true };
+        }
+        case 'adminUsuarioAccion': {
+          const yo = sesion(); exigir(yo, ['Administrador']);
+          const lista = usuarios();
+          const u = lista.find(x => x.usuario === p.usuario);
+          if (!u) throw new Error('No existe ese usuario.');
+          if (p.que === 'desactivar' && u.usuario === yo.usuario) throw new Error('No podés desactivar tu propio usuario.');
+          if (p.que === 'activar' || p.que === 'desactivar') u.activo = p.que === 'activar' ? 1 : 0;
+          if (p.que === 'desbloquear') u.bloqueado = false;
+          if (p.que === 'reiniciar2fa') u.doble_factor = 0;
+          guardarUsuarios(lista);
+          log(yo.usuario, 'admin: ' + p.que, u.usuario);
+          return p.que === 'clave' ? { ok: true, claveTemporal: 'demo1234' } : { ok: true };
+        }
+        case 'adminBarrios': {
+          exigir(sesion(), ['Administrador']);
+          if (Array.isArray(p.lista)) almacen.set('gr_demo_barrios', p.lista, 'local');
+          return { ok: true, barrios: barrios() };
+        }
+        case 'adminActividad': {
+          exigir(sesion(), ['Administrador']);
+          const f = String(p.usuario || '').toLowerCase();
+          if (p.tipo === 'historial') {
+            const filas = registros().filter(r => r.usuario !== 'ejemplo' || r.id > 258).slice(-100).reverse()
+              .filter(r => !f || r.usuario === f)
+              .map(r => ({ n: r.id, fecha: r.fecha, usuario: r.usuario, secretaria: r.secretaria, objeto: 'registro:' + r.id, accion: r.editado ? 'Corrección de datos' : 'Alta', cambios: '[]' }));
+            return { ok: true, filas };
+          }
+          return { ok: true, filas: accesos().slice().reverse().filter(a => !f || a.usuario === f) };
+        }
+        case 'adminExportar': case 'adminLlave': case 'adminRespaldar': case 'adminRespaldoDescargar':
+          exigir(sesion(), ['Administrador']); soloServidor(); break;
         default: throw new Error('Acción desconocida.');
       }
     };
@@ -579,6 +688,7 @@
     accion: null,          // en actualización: 'telefono' | 'domicilio' | 'correccion'
     ficha: null,           // { ref, datos, ... } ficha que se edita o actualiza
     habilitados: null,     // Set de campos editables (null = todos)
+    ocultos: new Set(),    // campos que el servidor envió enmascarados (no se ven completos)
     ultima: null,          // { ref, id?, fecha, datos }
     duplicados: { dni: null, cuit: null },
     busqueda: { tipo: 'dni', valor: '', resultados: null },
@@ -587,7 +697,9 @@
     cargasSesion: 0,
   };
   const api = MODO_DEMO ? crearApiDemo() : crearApiRemota();
-  const esAnalisis = () => !!(estado.sesion && estado.sesion.usuario.perfil === 'Análisis');
+  const perfil = () => (estado.sesion ? estado.sesion.usuario.perfil : '');
+  const veNumeros = () => !!perfil() && perfil() !== 'Carga';   // Análisis y Administrador ven números de carga
+  const esAdmin = () => perfil() === 'Administrador';
 
   /* ============================ UI: TOASTS / MODALES ============================ */
   function toast(texto, tipo = 'info', accion) {
@@ -989,8 +1101,18 @@
     $('#sn-numero').disabled = !habilitado(CAMPO.numero);
   }
 
+  /* Un dato oculto (teléfono, mail, comentarios) que se habilita se vacía: hay que escribirlo completo. */
+  function vaciarSiOculto(k) {
+    if (!estado.ocultos.has(k)) return;
+    estado.valores[k] = '';
+    const el = entrada(CAMPO[k]);
+    el.value = '';
+    el.placeholder = 'Dato oculto por seguridad: escribí el nuevo completo';
+    if (CAMPO[k].maximo) actualizarContador(CAMPO[k]);
+  }
+
   function habilitarCorreccion(id) {
-    [id].concat(DEPENDIENTES[id] || []).forEach(k => estado.habilitados.add(k));
+    [id].concat(DEPENDIENTES[id] || []).forEach(k => { estado.habilitados.add(k); vaciarSiOculto(k); });
     aplicarBloqueos();
     const el = entrada(CAMPO[id]);
     el.focus();
@@ -1063,6 +1185,7 @@
       if (c.tipo === 'combo') estado.textos[c.id] = v;
       const el = entrada(c);
       el.value = v;
+      if (c.tipo !== 'select') el.placeholder = c.placeholder || c.ejemplo || '';
       nodoCampo(c).classList.remove('error', 'faltante', 'sacudir', 'reciente', 'ok', 'duplicado');
       el.removeAttribute('aria-invalid');
     });
@@ -1130,6 +1253,7 @@
   }
 
   function cerrarFormulario() {
+    estado.ocultos = new Set();
     estado.modo = 'nueva';
     estado.accion = null;
     estado.ficha = null;
@@ -1141,6 +1265,7 @@
   }
 
   function nuevaCarga(prefijo) {
+    estado.ocultos = new Set();
     estado.modo = 'nueva';
     estado.accion = null;
     estado.ficha = null;
@@ -1159,7 +1284,9 @@
     if (accion === 'domicilio') ['calle', 'numero', 'piso', 'barrio', 'barrioOtro'].forEach(k => { datos[k] = ''; });
     const campos = ACCIONES[accion].campos(ficha.datos);
     estado.habilitados = new Set(campos.flatMap(k => [k].concat(DEPENDIENTES[k] || [])));
+    estado.ocultos = new Set(ficha.ocultos || []);
     cargarEnFormulario(datos);
+    estado.habilitados.forEach(vaciarSiOculto);
     aplicarModo();
     abrirFormulario();
   }
@@ -1244,7 +1371,7 @@
     const tipoActual = () => estado.busqueda.tipo;
     const pintarTipo = () => {
       const b = BUSQUEDAS[tipoActual()];
-      $$('.buscar-tipo').forEach(x => {
+      $$('.buscar-tipo[data-tipo]').forEach(x => {
         const act = x.dataset.tipo === tipoActual();
         x.classList.toggle('activo', act);
         x.setAttribute('aria-checked', act);
@@ -1253,7 +1380,7 @@
       input.setAttribute('aria-label', 'Buscar por ' + b.etiqueta);
       $('#buscar-formato').innerHTML = `Solo números, sin puntos ni guiones · Ej: <code>${b.ejemplo}</code>`;
     };
-    $$('.buscar-tipo').forEach(x => x.addEventListener('click', () => {
+    $$('.buscar-tipo[data-tipo]').forEach(x => x.addEventListener('click', () => {
       estado.busqueda = { tipo: x.dataset.tipo, valor: '', resultados: null };
       input.value = '';
       nodo.classList.remove('error', 'reciente');
@@ -1387,7 +1514,7 @@
     if (estado.modo === 'actualizacion') {
       // 2a) Actualización: solo se envía lo habilitado y debe haber algún cambio.
       cambios = {};
-      estado.habilitados.forEach(k => { cambios[k] = datos[k]; });
+      estado.habilitados.forEach(k => { if (!(estado.ocultos.has(k) && !datos[k])) cambios[k] = datos[k]; });
       const tocados = Object.keys(cambios).filter(k => (cambios[k] || '') !== (estado.ficha.datos[k] || ''));
       if (!tocados.length) {
         Sonido.error();
@@ -1448,8 +1575,15 @@
     try {
       if (estado.modo === 'actualizacion') {
         const { ref } = estado.ficha;
-        const r = await api('actualizar', { ref, accion: estado.accion, cambios });
-        if (estado.ultima && estado.ultima.ref === ref) { estado.ultima.datos = r.datos; guardarUltima(); }
+        const r = await api('actualizar', { ref, que: estado.accion, cambios });
+        if (estado.ultima && estado.ultima.ref === ref) {
+          const ocultos = r.ocultos || [];
+          Object.keys(r.datos).forEach(k => {
+            if (!ocultos.includes(k)) estado.ultima.datos[k] = r.datos[k];
+            else if (k in cambios) estado.ultima.datos[k] = cambios[k];
+          });
+          guardarUltima();
+        }
         Sonido.exito();
         toast(`Ficha actualizada: <strong>${esc(ACCIONES[estado.accion].titulo.toLowerCase())}</strong>.`, 'exito');
       } else if (estado.modo === 'edicion') {
@@ -1505,8 +1639,8 @@
     const d = u.datos;
     // El perfil Carga no ve números de carga (no revelan el total de la base).
     $('#ultima-id').textContent = [d.apellido, d.nombre].filter(Boolean).join(', ') || 'Sin nombre';
-    $('#ultima-num').textContent = esAnalisis() && u.id ? '#' + u.id : '';
-    $('#ultima-num').hidden = !(esAnalisis() && u.id);
+    $('#ultima-num').textContent = veNumeros() && u.id ? '#' + u.id : '';
+    $('#ultima-num').hidden = !(veNumeros() && u.id);
     const f = new Date(u.fecha);
     $('#ultima-hora').textContent = isNaN(f) ? '' : 'Guardada el ' + f.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) + ' h';
     const filas = [
@@ -1539,6 +1673,7 @@
       if (!ok) return;
     }
     estado.modo = 'edicion';
+    estado.ocultos = new Set();
     estado.accion = null;
     estado.habilitados = null;
     estado.ficha = { ref: estado.ultima.ref, id: estado.ultima.id, datos: estado.ultima.datos };
@@ -1701,6 +1836,411 @@
     cols.forEach((c, i) => conTooltip(c, `${largo(serie[i].clave)}<br><strong>${fmtNum(serie[i].cantidad)}</strong> cargas`));
   }
 
+  /* ============================ ADMINISTRACIÓN ============================ */
+  const fechaHora = iso => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return isNaN(d) ? iso : d.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  };
+  const claveSello = () => 'rcd_sello_' + (estado.sesion ? estado.sesion.usuario.usuario : '');
+  const claveHuellaLlave = () => 'rcd_llave_' + (estado.sesion ? estado.sesion.usuario.usuario : '');
+  const admin = { tipoActividad: 'accesos', resumen: null };
+
+  function descargar(blob, nombre) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nombre;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+
+  async function cargarAdmin() {
+    const panel = $('#panel-admin');
+    const btn = $('#btn-admin-actualizar');
+    panel.classList.add('cargando');
+    btn.classList.add('girando');
+    try {
+      const sello = almacen.get(claveSello(), null, 'local');
+      const [res, us, ba] = await Promise.all([
+        api('adminResumen', { sello }), api('adminUsuarios'), api('adminBarrios'),
+      ]);
+      admin.resumen = res;
+      pintarEstadoAdmin(res, sello);
+      pintarUsuarios(us.usuarios);
+      pintarBarriosAdmin(ba.barrios);
+      pintarRespaldos(res);
+      await cargarActividad();
+    } catch (err) {
+      if (err.sesionVencida) return sesionVencida();
+      toast(esc(err.message), 'error');
+    } finally {
+      panel.classList.remove('cargando');
+      btn.classList.remove('girando');
+    }
+  }
+
+  /* ---------- Estado de seguridad ---------- */
+  function pintarEstadoAdmin(r, selloGuardado) {
+    const v = r.verificacion;
+    const alertas = [];
+    // 1) Sello: si el historial se reescribió desde la última visita, no coincide.
+    if (r.sello && r.sello.hashActual !== r.sello.hashGuardado) {
+      alertas.push(`<strong>El historial fue reescrito desde tu última visita.</strong> El evento N° ${r.sello.eventos} ya no es el mismo que viste la última vez. Alguien modificó la base por fuera del sistema.`);
+    }
+    // 2) Llave de respaldos cambiada sin que la cambies vos (desde este navegador).
+    const huellaVista = almacen.get(claveHuellaLlave(), null, 'local');
+    if (huellaVista && r.respaldo.llave && huellaVista !== r.respaldo.llave) {
+      alertas.push(`<strong>La llave de los respaldos cambió.</strong> Antes era <code>${esc(huellaVista)}</code> y ahora es <code>${esc(r.respaldo.llave)}</code>. Si no fuiste vos, los respaldos nuevos podrían quedar en manos de otra persona.`);
+    }
+    if (!v.ok) alertas.push(`<strong>Se detectaron cambios hechos por fuera del sistema:</strong><ul>${v.problemas.slice(0, 12).map(p => `<li>${esc(p)}</li>`).join('')}</ul>`);
+    $('#admin-alerta').innerHTML = alertas.length ? `<div class="alerta-roja">${icono('alert')}<div>${alertas.map(a => `<p>${a}</p>`).join('')}
+        <button type="button" class="btn btn-secundario" id="btn-aceptar-sello">Revisado: tomar el estado actual como referencia</button></div></div>` : '';
+    const bSello = $('#btn-aceptar-sello');
+    if (bSello) bSello.addEventListener('click', () => {
+      almacen.set(claveSello(), { eventos: v.eventos, hash: v.hash }, 'local');
+      if (r.respaldo.llave) almacen.set(claveHuellaLlave(), r.respaldo.llave, 'local');
+      $('#admin-alerta').innerHTML = '';
+      toast('Estado actual tomado como nueva referencia.', 'info');
+    });
+    // Sin alertas: se actualiza la referencia guardada en este navegador.
+    if (!alertas.length) {
+      almacen.set(claveSello(), { eventos: v.eventos, hash: v.hash }, 'local');
+      if (r.respaldo.llave) almacen.set(claveHuellaLlave(), r.respaldo.llave, 'local');
+    }
+
+    const alertasActividad = r.alertas || [];
+    const tiles = [
+      {
+        clase: v.ok && !alertas.length ? 'bien' : 'mal', ic: v.ok && !alertas.length ? 'shield' : 'alert',
+        t: 'Integridad de los datos', v: v.ok && !alertas.length ? 'Íntegra' : 'Revisar',
+        sub: `${fmtNum(v.eventos)} eventos en la cadena · sello <code>${esc(v.hash.slice(0, 12))}</code>`,
+      },
+      {
+        clase: r.respaldo.llave ? (r.respaldo.ultimo ? 'bien' : 'aviso') : 'mal', ic: 'database',
+        t: 'Respaldos cifrados', v: r.respaldo.llave ? (r.respaldo.ultimo ? 'Activos' : 'Pendiente') : 'Sin llave',
+        sub: r.respaldo.llave ? `Último: ${fechaHora(r.respaldo.ultimo)} · todos los días ${esc(r.respaldo.hora)} h` : 'Creá tu llave para activar los respaldos.',
+      },
+      {
+        clase: alertasActividad.length ? 'aviso' : 'bien', ic: 'users',
+        t: 'Alertas de actividad', v: alertasActividad.length ? fmtNum(alertasActividad.length) : 'Ninguna',
+        sub: `${fmtNum(r.ingresosFallidos24h)} ingresos fallidos en 24 h · límite ${fmtNum(r.limiteBusquedasPorHora)} búsquedas/h`,
+      },
+    ];
+    $('#admin-estado').innerHTML = tiles.map(k => `
+      <div class="tarjeta estado-tile ${k.clase}">
+        <div class="kpi-cabecera"><span class="kpi-icono">${icono(k.ic)}</span>${k.t}</div>
+        <div class="estado-valor">${k.v}</div>
+        <div class="kpi-sub">${k.sub}</div>
+      </div>`).join('')
+      + (alertasActividad.length ? `<div class="tarjeta alertas-lista"><strong>Últimas alertas (30 días)</strong><ul>${alertasActividad.slice(0, 8)
+        .map(a => `<li><span>${fechaHora(a.fecha)}</span> <b>${esc(a.usuario)}</b> — ${esc(a.evento.replace(/^ALERTA:?\s*/, ''))}${a.detalle ? ` <em>(${esc(a.detalle)})</em>` : ''}</li>`).join('')}</ul></div>` : '');
+  }
+
+  /* ---------- Usuarios ---------- */
+  function pintarUsuarios(lista) {
+    admin.usuarios = lista;
+    const yo = estado.sesion.usuario.usuario;
+    const estadoU = u => [
+      u.activo ? '<span class="insignia verde">Activo</span>' : '<span class="insignia gris">Inactivo</span>',
+      u.bloqueado ? '<span class="insignia roja">Bloqueado</span>' : '',
+      u.debe_cambiar_clave ? '<span class="insignia ambar">Clave temporal</span>' : '',
+      u.doble_factor ? '<span class="insignia azul">2FA</span>' : '',
+    ].join(' ');
+    const boton = (que, ic, titulo, u) => `<button type="button" class="btn-icono chico" data-u="${esc(u.usuario)}" data-que="${que}" title="${titulo}" aria-label="${titulo} (${esc(u.usuario)})">${icono(ic)}</button>`;
+    $('#tabla-usuarios').innerHTML = `<thead><tr><th>Usuario</th><th>Nombre</th><th>Perfil</th><th>Secretaría</th><th>Estado</th><th>Último ingreso</th><th></th></tr></thead><tbody>`
+      + lista.map(u => `<tr class="${u.activo ? '' : 'inactivo'}">
+          <td><code>${esc(u.usuario)}</code>${u.usuario === yo ? ' <span class="insignia gris">vos</span>' : ''}</td>
+          <td>${esc(u.nombre)}</td><td><span class="perfil perfil-${esc(u.perfil).replace(/[^a-zA-Z]/g, '')}">${esc(u.perfil)}</span></td>
+          <td>${esc(u.secretaria)}</td><td class="celda-estado">${estadoU(u)}</td><td>${fechaHora(u.ultimo_ingreso)}</td>
+          <td class="celda-acciones">${boton('editar', 'pencil', 'Editar', u)}${boton('clave', 'key', 'Restablecer contraseña', u)}
+            ${u.bloqueado ? boton('desbloquear', 'unlock', 'Desbloquear', u) : ''}
+            ${u.doble_factor && u.usuario !== yo ? boton('reiniciar2fa', 'shield', 'Reiniciar doble factor', u) : ''}
+            ${u.usuario !== yo ? boton(u.activo ? 'desactivar' : 'activar', u.activo ? 'x' : 'check', u.activo ? 'Desactivar' : 'Activar', u) : ''}</td>
+        </tr>`).join('') + '</tbody>';
+    $$('#tabla-usuarios [data-que]').forEach(b => b.addEventListener('click', () => accionUsuario(b.dataset.u, b.dataset.que)));
+  }
+
+  function htmlUsuario(u) {
+    const secretarias = [...new Set((admin.usuarios || []).map(x => x.secretaria))].sort();
+    return `<label class="mf-campo"><span>Usuario</span><input name="usuario" value="${esc(u ? u.usuario : '')}" ${u ? 'readonly' : ''}
+        autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ej: jperez"></label>
+      <p class="mf-ayuda">De 3 a 30 caracteres: minúsculas, números, punto o guion. No se puede cambiar después.</p>
+      <label class="mf-campo"><span>Nombre y apellido</span><input name="nombre" value="${esc(u ? u.nombre : '')}" autocomplete="off"></label>
+      <label class="mf-campo"><span>Secretaría</span><input name="secretaria" list="lista-secretarias" value="${esc(u ? u.secretaria : '')}" autocomplete="off"></label>
+      <datalist id="lista-secretarias">${secretarias.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+      <label class="mf-campo"><span>Perfil</span><select name="perfil">
+        ${['Carga', 'Análisis', 'Administrador'].map(p => `<option ${u && u.perfil === p ? 'selected' : ''}>${p}</option>`).join('')}</select></label>
+      <ul class="mf-perfiles"><li><b>Carga:</b> busca, carga y actualiza fichas. No ve números ni estadísticas.</li>
+        <li><b>Análisis:</b> además ve las estadísticas.</li>
+        <li><b>Administrador:</b> acceso total. Entra con doble factor.</li></ul>`;
+  }
+
+  async function mostrarClaveTemporal(usuario, clave) {
+    await formulario({
+      titulo: 'Contraseña temporal', icono: 'key', cancelar: 'Listo',
+      html: `<p class="mf-texto">Contraseña temporal de <strong>${esc(usuario)}</strong>:</p>
+        <p class="clave-temporal"><code>${esc(clave)}</code></p>
+        <p class="mf-ayuda">Entregala en persona. Al ingresar, el sistema le va a pedir que elija una contraseña propia.
+        Por seguridad, esta contraseña no se vuelve a mostrar.</p>`,
+    });
+  }
+
+  async function accionUsuario(usuario, que) {
+    const u = (admin.usuarios || []).find(x => x.usuario === usuario);
+    if (que === 'editar') {
+      const ok = await formulario({
+        titulo: 'Editar usuario', icono: 'user', aceptar: 'Guardar', html: htmlUsuario(u),
+        alEnviar: f => api('adminUsuarioGuardar', { datos: Object.assign(f, { nuevo: false }) }),
+      });
+      if (ok) { toast('Usuario actualizado.', 'exito'); cargarAdmin(); }
+      return;
+    }
+    const textos = {
+      clave: ['¿Restablecer la contraseña?', `Se genera una contraseña temporal para <strong>${esc(usuario)}</strong> y se cierran sus sesiones abiertas.`, 'Restablecer'],
+      desactivar: ['¿Desactivar el usuario?', `<strong>${esc(usuario)}</strong> no va a poder ingresar. Sus cargas se conservan. Podés reactivarlo cuando quieras.`, 'Desactivar'],
+      activar: ['¿Activar el usuario?', `<strong>${esc(usuario)}</strong> va a poder ingresar de nuevo.`, 'Activar'],
+      desbloquear: ['¿Desbloquear el usuario?', `Se borran los intentos fallidos de <strong>${esc(usuario)}</strong>.`, 'Desbloquear'],
+      reiniciar2fa: ['¿Reiniciar el doble factor?', `<strong>${esc(usuario)}</strong> va a tener que volver a vincular su celular la próxima vez que ingrese. Usalo si perdió o cambió el teléfono.`, 'Reiniciar'],
+    }[que];
+    const r = await formulario({
+      titulo: textos[0], icono: que === 'desactivar' ? 'alert' : 'user', aceptar: textos[2], peligro: que === 'desactivar',
+      html: `<p class="mf-texto">${textos[1]}</p>`,
+      alEnviar: () => api('adminUsuarioAccion', { usuario, que }),
+    });
+    if (!r) return;
+    if (r.claveTemporal) await mostrarClaveTemporal(usuario, r.claveTemporal);
+    else toast('Listo.', 'exito');
+    cargarAdmin();
+  }
+
+  async function nuevoUsuario() {
+    const r = await formulario({
+      titulo: 'Nuevo usuario', icono: 'user', aceptar: 'Crear usuario', html: htmlUsuario(null),
+      alEnviar: f => api('adminUsuarioGuardar', { datos: Object.assign(f, { nuevo: true }) }),
+    });
+    if (!r) return;
+    await mostrarClaveTemporal(r.usuario || $('#mf-form [name=usuario]').value, r.claveTemporal);
+    cargarAdmin();
+  }
+
+  /* ---------- Barrios ---------- */
+  function pintarBarriosAdmin(lista) {
+    $('#admin-barrios').value = lista.join('\n');
+    contarBarrios();
+  }
+  function contarBarrios() {
+    const n = $('#admin-barrios').value.split('\n').map(x => x.trim()).filter(Boolean).length;
+    $('#admin-barrios-cuenta').textContent = `${fmtNum(n)} barrios`;
+  }
+  async function guardarBarriosAdmin() {
+    const lista = [...new Set($('#admin-barrios').value.split('\n').map(x => x.trim().replace(/\s+/g, ' ')).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'es'));
+    try {
+      const r = await api('adminBarrios', { lista });
+      pintarBarriosAdmin(r.barrios);
+      aplicarConfig({ barrios: r.barrios });
+      toast(`Lista de barrios guardada (${fmtNum(r.barrios.length)}).`, 'exito');
+    } catch (err) {
+      if (err.sesionVencida) return sesionVencida();
+      Sonido.error();
+      toast(esc(err.message), 'error');
+    }
+  }
+
+  /* ---------- Actividad ---------- */
+  async function cargarActividad() {
+    const tipo = admin.tipoActividad;
+    const r = await api('adminActividad', { tipo, usuario: $('#actividad-usuario').value.trim(), limite: 200 });
+    const t = $('#tabla-actividad');
+    if (!r.filas.length) { t.innerHTML = '<tbody><tr><td class="vacio">Sin actividad para mostrar.</td></tr></tbody>'; return; }
+    if (tipo === 'historial') {
+      const detalle = e => {
+        let c;
+        try { c = JSON.parse(e.cambios); } catch (_) { return ''; }
+        if (Array.isArray(c)) {
+          return c.slice(0, 6).map(x => {
+            const def = CAMPO[x.campo];
+            return `<span class="cambio"><b>${esc(def ? def.etiqueta : x.campo)}:</b> ${x.antes ? `<s>${esc(x.antes)}</s> → ` : ''}${esc(x.despues || '(vacío)')}</span>`;
+          }).join(' ') + (c.length > 6 ? ` <em>y ${c.length - 6} más</em>` : '');
+        }
+        return c.estado ? Object.entries(c.estado).filter(([k]) => !['clave', 'totp', 'huella'].includes(k)).map(([k, v]) => `${esc(k)}: ${esc(v)}`).join(' · ') : '';
+      };
+      t.innerHTML = '<thead><tr><th>N°</th><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Sobre</th><th>Detalle</th></tr></thead><tbody>'
+        + r.filas.map(e => `<tr><td>${e.n}</td><td class="nowrap">${fechaHora(e.fecha)}</td><td><code>${esc(e.usuario)}</code></td>
+          <td>${esc(e.accion)}</td><td class="nowrap">${esc(e.objeto.replace('registro:', 'Ficha #').replace('usuario:', 'Usuario ').replace('ajuste:', 'Ajuste '))}</td>
+          <td class="detalle">${detalle(e)}</td></tr>`).join('') + '</tbody>';
+    } else {
+      t.innerHTML = '<thead><tr><th>Fecha</th><th>Usuario</th><th>Evento</th><th>Detalle</th><th>IP</th></tr></thead><tbody>'
+        + r.filas.map(a => `<tr class="${/^ALERTA|bloqueado|fallido/.test(a.evento) ? 'fila-alerta' : ''}"><td class="nowrap">${fechaHora(a.fecha)}</td>
+          <td><code>${esc(a.usuario)}</code></td><td>${esc(a.evento)}</td><td class="detalle">${esc(a.detalle)}</td><td><code>${esc(a.ip)}</code></td></tr>`).join('') + '</tbody>';
+    }
+  }
+
+  /* ---------- Respaldos, llave y exportación ---------- */
+  function pintarRespaldos(r) {
+    const res = r.respaldo;
+    const sinCripto = !(window.crypto && window.crypto.subtle);
+    $('#admin-respaldos').innerHTML = `
+      <div class="respaldo-bloque">
+        <div class="respaldo-fila"><div><strong>Planilla completa (.xlsx)</strong><span>Todas las fichas, el historial, los accesos y los usuarios. Pide tu código de doble factor.</span></div>
+          <button type="button" class="btn btn-primario" id="btn-exportar">${icono('download')}<span>Exportar</span></button></div>
+      </div>
+      <div class="respaldo-bloque">
+        <div class="respaldo-fila"><div><strong>Llave de los respaldos</strong>
+          <span>${res.llave ? `Configurada · huella <code>${esc(res.llave)}</code>` : 'Todavía no creaste tu llave: sin ella no se hacen respaldos.'}</span></div>
+          <button type="button" class="btn ${res.llave ? 'btn-secundario' : 'btn-primario'}" id="btn-llave">${icono('key')}<span>${res.llave ? 'Cambiar llave' : 'Crear mi llave'}</span></button></div>
+        <div class="respaldo-fila"><div><strong>Abrir un respaldo</strong><span>Se descifra en esta computadora con tu llave privada; no se envía a ningún lado.</span></div>
+          <button type="button" class="btn btn-secundario" id="btn-abrir-respaldo">${icono('unlock')}<span>Abrir</span></button></div>
+        ${sinCripto ? '<p class="mf-ayuda aviso-texto">Para crear la llave o abrir respaldos, la página tiene que abrirse con conexión segura (https).</p>' : ''}
+      </div>
+      <div class="respaldo-bloque">
+        <div class="respaldo-fila"><div><strong>Respaldos guardados</strong><span>Carpeta del servidor: <code>${esc(res.carpeta)}</code></span></div>
+          <button type="button" class="btn btn-secundario" id="btn-respaldar" ${res.llave ? '' : 'disabled'}>${icono('save')}<span>Respaldar ahora</span></button></div>
+        <ul class="lista-respaldos">${res.archivos.length ? res.archivos.slice(0, 12).map(a => `<li><span>${icono(a.nombre.includes('planilla') ? 'file' : 'database')}
+          ${esc(a.nombre)}</span><span class="tam">${fmtNum(Math.round(a.bytes / 1024))} KB</span>
+          <button type="button" class="btn-icono chico" data-respaldo="${esc(a.nombre)}" title="Descargar (cifrado)" aria-label="Descargar ${esc(a.nombre)}">${icono('download')}</button></li>`).join('')
+          : '<li class="vacio">Todavía no hay respaldos.</li>'}</ul>
+      </div>`;
+    $('#btn-exportar').addEventListener('click', exportarPlanilla);
+    $('#btn-llave').addEventListener('click', crearLlave);
+    $('#btn-abrir-respaldo').addEventListener('click', abrirRespaldo);
+    $('#btn-respaldar').addEventListener('click', async () => {
+      try { await api('adminRespaldar'); toast('Respaldo cifrado creado.', 'exito'); cargarAdmin(); } catch (err) { toast(esc(err.message), 'error'); }
+    });
+    $$('[data-respaldo]').forEach(b => b.addEventListener('click', async () => {
+      try { const r2 = await api('adminRespaldoDescargar', { nombre: b.dataset.respaldo }); descargar(r2.archivo, r2.nombre); } catch (err) { toast(esc(err.message), 'error'); }
+    }));
+  }
+
+  const campoCodigo = '<label class="mf-campo"><span>Código de tu aplicación de autenticación</span><input name="codigo" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000" class="codigo-2fa"></label>';
+
+  async function exportarPlanilla() {
+    const r = await formulario({
+      titulo: 'Exportar planilla completa', icono: 'download', aceptar: 'Exportar',
+      html: `<p class="mf-texto">La planilla tiene <strong>todos los datos personales</strong>. Guardala en un lugar seguro y no la envíes por mail.</p>${campoCodigo}`,
+      alEnviar: f => api('adminExportar', { codigo: f.codigo }),
+    });
+    if (r && r.archivo) { descargar(r.archivo, r.nombre); toast('Planilla descargada.', 'exito'); }
+  }
+
+  /* Cifrado en el navegador (WebCrypto): la llave privada nunca sale de esta computadora. */
+  const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+  const desdeB64 = t => Uint8Array.from(atob(t), c => c.charCodeAt(0));
+  async function huellaLlave(spki) {
+    const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('rcd:' + spki));
+    return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+  }
+  async function claveDeFrase(frase, sal, iter) {
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(frase), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: sal, iterations: iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  }
+
+  async function crearLlave() {
+    if (!(window.crypto && crypto.subtle)) return toast('Esta función necesita conexión segura (https).', 'error');
+    const cambio = !!(admin.resumen && admin.resumen.respaldo.llave);
+    const r = await formulario({
+      titulo: cambio ? 'Cambiar la llave de los respaldos' : 'Crear mi llave de respaldos', icono: 'key', aceptar: 'Crear llave y descargarla',
+      html: `<p class="mf-texto">Se crea un par de llaves en esta computadora:</p>
+        <ul class="mf-lista"><li>La <b>llave pública</b> va al servidor: con ella se cifran los respaldos.</li>
+        <li>La <b>llave privada</b> se descarga como archivo y queda protegida con una frase secreta. Es la única forma de abrir los respaldos.</li></ul>
+        <p class="mf-ayuda aviso-texto">Guardá el archivo en un pendrive (no en el servidor) y una copia en sobre cerrado.
+        Si perdés el archivo o la frase, los respaldos no se pueden abrir.</p>
+        ${cambio ? '<p class="mf-ayuda">Los respaldos anteriores siguen abriéndose con la llave anterior.</p>' : ''}
+        <label class="mf-campo"><span>Frase secreta (mínimo 12 caracteres)</span><input type="password" name="frase" autocomplete="new-password"></label>
+        <label class="mf-campo"><span>Repetila</span><input type="password" name="repetir" autocomplete="new-password"></label>
+        ${campoCodigo}`,
+      alEnviar: async f => {
+        if (f.frase.length < 12) throw new Error('La frase secreta debe tener al menos 12 caracteres.');
+        if (f.frase !== f.repetir) throw new Error('Las dos frases no coinciden.');
+        if (!/^\d{6}$/.test(f.codigo)) throw new Error('Escribí el código de 6 números de tu aplicación.');
+        const par = await crypto.subtle.generateKey({ name: 'RSA-OAEP', modulusLength: 3072, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['encrypt', 'decrypt']);
+        const spki = b64(await crypto.subtle.exportKey('spki', par.publicKey));
+        const pkcs8 = await crypto.subtle.exportKey('pkcs8', par.privateKey);
+        const sal = crypto.getRandomValues(new Uint8Array(16));
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const iter = 600000;
+        const cifrada = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await claveDeFrase(f.frase, sal, iter), pkcs8);
+        const huella = await huellaLlave(spki);
+        const archivo = {
+          tipo: 'llave-privada-red-central-de-datos', version: 1, huella, creada: new Date().toISOString(),
+          kdf: { algoritmo: 'PBKDF2-SHA256', iteraciones: iter, sal: b64(sal) }, iv: b64(iv), llave: b64(cifrada),
+        };
+        // Primero se descarga la llave privada; recién después se envía la pública al servidor.
+        descargar(new Blob([JSON.stringify(archivo, null, 2)], { type: 'application/json' }), `llave-privada-red-central-${huella}.json`);
+        const res = await api('adminLlave', { spki, codigo: f.codigo });
+        almacen.set(claveHuellaLlave(), res.huella, 'local');
+        return res;
+      },
+    });
+    if (!r) return;
+    await formulario({
+      titulo: 'Llave creada', icono: 'check-circle', cancelar: 'Entendido',
+      html: `<p class="mf-texto">Se descargó <code>llave-privada-red-central-${esc(r.huella)}.json</code>.</p>
+        <ul class="mf-lista"><li>Copialo a un <b>pendrive</b> y borralo de esta computadora.</li>
+        <li>Guardá una <b>segunda copia</b> (con la frase anotada aparte) en sobre cerrado, en un lugar seguro del municipio.</li>
+        <li>${r.respaldo && r.respaldo.ok ? 'Ya se hizo el primer respaldo cifrado.' : 'El primer respaldo se hará esta noche.'}</li></ul>`,
+    });
+    cargarAdmin();
+  }
+
+  async function abrirRespaldo() {
+    if (!(window.crypto && crypto.subtle)) return toast('Esta función necesita conexión segura (https).', 'error');
+    await formulario({
+      titulo: 'Abrir un respaldo', icono: 'unlock', aceptar: 'Descifrar y descargar',
+      html: `<p class="mf-texto">Todo ocurre en esta computadora: el respaldo y tu llave no se envían a ningún lado.</p>
+        <label class="mf-campo"><span>Archivo de respaldo (.rcd)</span><input type="file" name="respaldo" accept=".rcd"></label>
+        <label class="mf-campo"><span>Tu llave privada (.json)</span><input type="file" name="llave" accept=".json,application/json"></label>
+        <label class="mf-campo"><span>Frase secreta</span><input type="password" name="frase" autocomplete="off"></label>`,
+      alEnviar: async f => {
+        if (!f.respaldo || !f.respaldo.size || !f.llave || !f.llave.size) throw new Error('Elegí el respaldo y el archivo de tu llave.');
+        let llave;
+        try { llave = JSON.parse(await f.llave.text()); } catch (_) { throw new Error('El archivo de la llave no es válido.'); }
+        if (llave.tipo !== 'llave-privada-red-central-de-datos') throw new Error('Ese archivo no es una llave de la Red Central de Datos.');
+        let pkcs8;
+        try {
+          pkcs8 = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: desdeB64(llave.iv) },
+            await claveDeFrase(f.frase, desdeB64(llave.kdf.sal), llave.kdf.iteraciones), desdeB64(llave.llave));
+        } catch (_) { throw new Error('La frase secreta no es correcta.'); }
+        const privada = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
+        const buf = new Uint8Array(await f.respaldo.arrayBuffer());
+        if (new TextDecoder().decode(buf.slice(0, 4)) !== 'RCD1') throw new Error('Ese archivo no es un respaldo de la Red Central de Datos.');
+        const dv = new DataView(buf.buffer);
+        let o = 4;
+        const ln = dv.getUint16(o); o += 2;
+        const nombre = new TextDecoder().decode(buf.slice(o, o + ln)); o += ln;
+        const lk = dv.getUint16(o); o += 2;
+        let aes;
+        try { aes = await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, privada, buf.slice(o, o + lk)); } catch (_) {
+          throw new Error('Este respaldo se cifró con otra llave.');
+        }
+        o += lk;
+        const iv = buf.slice(o, o + 12); o += 12;
+        const claveAes = await crypto.subtle.importKey('raw', aes, 'AES-GCM', false, ['decrypt']);
+        let plano;
+        try { plano = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, claveAes, buf.slice(o)); } catch (_) { throw new Error('El respaldo está dañado o fue alterado.'); }
+        descargar(new Blob([plano]), nombre);
+        return true;
+      },
+    }) && toast('Respaldo descifrado y descargado.', 'exito');
+  }
+
+  function prepararAdmin() {
+    $('#btn-admin-actualizar').addEventListener('click', cargarAdmin);
+    $('#btn-usuario-nuevo').addEventListener('click', nuevoUsuario);
+    $('#btn-barrios-guardar').addEventListener('click', guardarBarriosAdmin);
+    $('#admin-barrios').addEventListener('input', contarBarrios);
+    $$('[data-actividad]').forEach(b => b.addEventListener('click', () => {
+      admin.tipoActividad = b.dataset.actividad;
+      $$('[data-actividad]').forEach(x => { x.classList.toggle('activo', x === b); x.setAttribute('aria-checked', x === b); });
+      cargarActividad().catch(err => toast(esc(err.message), 'error'));
+    }));
+    let t;
+    $('#actividad-usuario').addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => cargarActividad().catch(() => {}), 400); });
+  }
+
   /* ============================ NAVEGACIÓN / SESIÓN ============================ */
   function irA(vista) {
     $$('.pestana').forEach(p => {
@@ -1710,7 +2250,9 @@
     });
     $('#panel-carga').hidden = vista !== 'carga';
     $('#panel-estadisticas').hidden = vista !== 'estadisticas';
+    $('#panel-admin').hidden = vista !== 'admin';
     if (vista === 'estadisticas') cargarEstadisticas();
+    if (vista === 'admin') cargarAdmin();
   }
 
   function aplicarConfig(config) {
@@ -1726,8 +2268,9 @@
     $('#usuario-detalle').textContent = `${u.secretaria} · ${u.perfil}`;
     $('#usuario-avatar').textContent = u.nombre.split(/\s+/).map(p => p[0]).slice(0, 2).join('').toUpperCase();
     $('#lateral-secretaria').textContent = u.secretaria;
-    $('#pestanas').hidden = !esAnalisis();
-    $('#bloque-contador').hidden = !esAnalisis();
+    $('#pestanas').hidden = !veNumeros();
+    $('#pestana-admin').hidden = !esAdmin();
+    $('#bloque-contador').hidden = !veNumeros();
     $('#chip-demo').hidden = !MODO_DEMO;
     estado.ultima = almacen.get(claveUltima(), null);
     estado.cargasSesion = almacen.get('gr_contador', 0);
@@ -1738,6 +2281,10 @@
   }
 
   function mostrarLogin() {
+    tokenPendiente = null;
+    ['#paso-clave', '#paso-config2fa', '#paso-codigo', '#volver-login'].forEach(x => { $(x).hidden = true; });
+    $('#form-login').hidden = false;
+    $('.login-sub').hidden = false;
     $('#vista-app').hidden = true;
     $('#vista-login').hidden = false;
     $('#aviso-demo').hidden = !MODO_DEMO;
@@ -1753,38 +2300,178 @@
     mostrarLogin();
   }
 
-  async function alIngresar(e) {
-    e.preventDefault();
-    const usuario = $('#login-usuario').value.trim();
-    const clave = $('#login-clave').value;
-    const err = $('#login-error');
+  /* ---------- Ingreso en pasos: contraseña → (contraseña nueva) → (doble factor) ---------- */
+  let tokenPendiente = null;
+
+  function mostrarPaso(id, r) {
+    ['#form-login', '#paso-clave', '#paso-config2fa', '#paso-codigo'].forEach(x => { $(x).hidden = x !== id; });
+    $('#volver-login').hidden = id === '#form-login';
+    $('.login-sub').hidden = id !== '#form-login';
+    $$('.login-error', $(id)).forEach(e => { e.hidden = true; });
+    if (id === '#paso-config2fa') $('#secreto-2fa').textContent = (r.secreto || '').replace(/(.{4})/g, '$1 ').trim();
+    setTimeout(() => { const i = $('input', $(id)); if (i) { if (id !== '#form-login') i.value = ''; i.focus(); } }, 50);
+  }
+
+  function volverAlLogin() {
+    tokenPendiente = null;
+    mostrarPaso('#form-login', {});
+    $('#login-clave').value = '';
+  }
+
+  /* Procesa la respuesta de cada paso: o pide el siguiente, o entra a la aplicación. */
+  function continuarIngreso(r) {
+    if (r.token) tokenPendiente = r.token;
+    const pasos = { cambiarClave: '#paso-clave', configurar2fa: '#paso-config2fa', codigo: '#paso-codigo' };
+    if (r.paso) return mostrarPaso(pasos[r.paso], r);
+    estado.sesion = { token: tokenPendiente, usuario: r.usuario };
+    tokenPendiente = null;
+    almacen.set('gr_sesion', estado.sesion);
+    aplicarConfig(r.config);
+    $('#login-clave').value = '';
+    mostrarPaso('#form-login', {});
+    const conservar = !!usuarioAnterior && usuarioAnterior === r.usuario.usuario;
+    usuarioAnterior = null;
+    mostrarApp(conservar);
+  }
+
+  async function enviarPaso(form, fn) {
+    const btn = $('button[type="submit"]', form);
+    const err = $('.login-error', form);
+    const texto = btn.innerHTML;
     err.hidden = true;
-    if (!usuario || !clave) {
-      err.textContent = 'Ingresá usuario y contraseña.';
-      err.hidden = false;
-      Sonido.error();
-      return;
-    }
-    const btn = $('#btn-ingresar');
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span><span>Ingresando…</span>';
+    btn.innerHTML = '<span class="spinner"></span><span>Verificando…</span>';
     try {
-      const r = await api('login', { usuario, clave });
-      estado.sesion = { token: r.token, usuario: r.usuario };
-      almacen.set('gr_sesion', estado.sesion);
-      aplicarConfig(r.config);
-      $('#login-clave').value = '';
-      const conservar = !!usuarioAnterior && usuarioAnterior === r.usuario.usuario;
-      usuarioAnterior = null;
-      mostrarApp(conservar);
+      continuarIngreso(await fn());
     } catch (ex) {
       err.textContent = ex.message;
       err.hidden = false;
       Sonido.error();
+      if (ex.sesionVencida) setTimeout(volverAlLogin, 1800);
     } finally {
       btn.disabled = false;
-      btn.innerHTML = '<span>Ingresar</span>';
+      btn.innerHTML = texto;
     }
+  }
+
+  function prepararPasosIngreso() {
+    $('#form-login').addEventListener('submit', e => {
+      e.preventDefault();
+      const usuario = $('#login-usuario').value.trim();
+      const clave = $('#login-clave').value;
+      if (!usuario || !clave) {
+        const err = $('#login-error');
+        err.textContent = 'Ingresá usuario y contraseña.';
+        err.hidden = false;
+        Sonido.error();
+        return;
+      }
+      enviarPaso(e.target, () => api('login', { usuario, clave }));
+    });
+    $('#paso-clave').addEventListener('submit', e => {
+      e.preventDefault();
+      const nueva = $('#clave-nueva').value, repetir = $('#clave-repetir').value;
+      const err = $('.login-error', e.target);
+      const problema = problemaClave(nueva) || (nueva !== repetir ? 'Las dos contraseñas no coinciden.' : null);
+      if (problema) { err.textContent = problema; err.hidden = false; Sonido.error(); return; }
+      enviarPaso(e.target, () => api('cambiarClave', { token: tokenPendiente, nueva }));
+    });
+    $('#paso-config2fa').addEventListener('submit', e => {
+      e.preventDefault();
+      enviarPaso(e.target, () => api('configurar2fa', { token: tokenPendiente, codigo: $('.codigo-2fa', e.target).value }));
+    });
+    $('#paso-codigo').addEventListener('submit', e => {
+      e.preventDefault();
+      enviarPaso(e.target, () => api('codigo2fa', { token: tokenPendiente, codigo: $('.codigo-2fa', e.target).value }));
+    });
+    $$('.codigo-2fa').forEach(i => i.addEventListener('input', () => {
+      i.value = i.value.replace(/\D/g, '').slice(0, 6);
+      if (i.value.length === 6) i.form.requestSubmit();
+    }));
+    $('#copiar-secreto').addEventListener('click', () => {
+      const t = $('#secreto-2fa').textContent.replace(/\s/g, '');
+      if (navigator.clipboard) navigator.clipboard.writeText(t).then(() => toast('Clave copiada.', 'exito'), () => {});
+    });
+    $('#volver-login').addEventListener('click', volverAlLogin);
+  }
+
+  /** Política de contraseñas (la misma que controla el servidor). */
+  function problemaClave(c) {
+    if (c.length < 10) return 'La contraseña debe tener al menos 10 caracteres.';
+    if (!/[A-Za-zÁÉÍÓÚÑáéíóúñ]/.test(c) || !/\d/.test(c)) return 'La contraseña debe combinar letras y números.';
+    return null;
+  }
+
+  async function cambiarMiClave() {
+    await formulario({
+      titulo: 'Cambiar mi contraseña', icono: 'key', aceptar: 'Guardar contraseña',
+      html: `<label class="mf-campo"><span>Contraseña actual</span><input type="password" name="actual" autocomplete="current-password"></label>
+        <label class="mf-campo"><span>Contraseña nueva</span><input type="password" name="nueva" autocomplete="new-password"></label>
+        <label class="mf-campo"><span>Repetila</span><input type="password" name="repetir" autocomplete="new-password"></label>
+        <p class="mf-ayuda">Al menos 10 caracteres, combinando letras y números.</p>`,
+      alEnviar: async f => {
+        const problema = problemaClave(f.nueva) || (f.nueva !== f.repetir ? 'Las dos contraseñas no coinciden.' : null);
+        if (problema) throw new Error(problema);
+        await api('cambiarClave', { actual: f.actual, nueva: f.nueva });
+        return true;
+      },
+    }) && toast('Contraseña actualizada.', 'exito');
+  }
+
+  /*
+   * Ventana con formulario. html: campos con atributo name. alEnviar(valores, form) puede lanzar un error
+   * (se muestra en la ventana) o devolver un resultado (cierra la ventana y lo devuelve).
+   */
+  function formulario({ titulo, icono: ic = 'info', html, aceptar = 'Aceptar', cancelar = 'Cancelar', alEnviar, alAbrir, peligro }) {
+    const d = $('#modal-form');
+    const form = $('#mf-form');
+    $('#mf-titulo').textContent = titulo;
+    $('#mf-icono').innerHTML = icono(ic);
+    $('#mf-cuerpo').innerHTML = html;
+    $('#mf-error').hidden = true;
+    const bAc = $('#mf-aceptar');
+    bAc.className = 'btn ' + (peligro ? 'btn-peligro' : 'btn-primario');
+    bAc.innerHTML = `<span>${esc(aceptar)}</span>`;
+    bAc.hidden = !alEnviar;
+    $('#mf-cancelar').innerHTML = `<span>${esc(cancelar)}</span>`;
+    if (d.open) d.close();
+    return new Promise(resolve => {
+      const fin = r => {
+        form.onsubmit = null;
+        $('#mf-cancelar').onclick = $('#mf-cerrar').onclick = null;
+        d.removeEventListener('cancel', alCancelar);
+        d.close();
+        resolve(r);
+      };
+      const alCancelar = e => { e.preventDefault(); fin(null); };
+      d.addEventListener('cancel', alCancelar);
+      $('#mf-cancelar').onclick = $('#mf-cerrar').onclick = () => fin(null);
+      form.onsubmit = async e => {
+        e.preventDefault();
+        if (!alEnviar) return fin(null);
+        const valores = Object.fromEntries([...new FormData(form)].map(([k, v]) => [k, typeof v === 'string' ? v : v]));
+        $('#mf-error').hidden = true;
+        const texto = bAc.innerHTML;
+        bAc.disabled = true;
+        bAc.innerHTML = '<span class="spinner"></span><span>Procesando…</span>';
+        try {
+          const r = await alEnviar(valores, form);
+          fin(r === undefined ? true : r);
+        } catch (err) {
+          if (err.sesionVencida) { fin(null); return sesionVencida(); }
+          $('#mf-error').textContent = err.message;
+          $('#mf-error').hidden = false;
+          Sonido.error();
+        } finally {
+          bAc.disabled = false;
+          bAc.innerHTML = texto;
+        }
+      };
+      d.showModal();
+      if (alAbrir) alAbrir(form);
+      const primero = $('input:not([type=hidden]):not([readonly]), select, textarea', form);
+      if (primero) primero.focus();
+    });
   }
 
   async function salir() {
@@ -1821,7 +2508,8 @@
     prepararBuscador();
     cerrarFormulario();
 
-    $('#form-login').addEventListener('submit', alIngresar);
+    prepararPasosIngreso();
+    prepararAdmin();
     $('#ver-clave').addEventListener('click', () => {
       const i = $('#login-clave');
       const ver = i.type === 'password';
@@ -1834,6 +2522,7 @@
     $('#btn-cancelar-edicion').addEventListener('click', cancelar);
     $('#btn-editar').addEventListener('click', editarUltima);
     $('#btn-salir').addEventListener('click', salir);
+    $('#btn-mi-clave').addEventListener('click', cambiarMiClave);
     $('#btn-actualizar').addEventListener('click', () => (estado.filtro.preset ? elegirPreset(estado.filtro.preset) : cargarEstadisticas()));
     $$('.preset').forEach(b => b.addEventListener('click', () => elegirPreset(b.dataset.preset)));
     ['#filtro-desde', '#filtro-hasta'].forEach(id => $(id).addEventListener('change', alCambiarFechas));

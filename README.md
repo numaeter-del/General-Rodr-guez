@@ -1,29 +1,84 @@
 # Red Central de Datos — General Rodríguez
 
-Aplicación web para que las secretarías del municipio carguen datos de contribuyentes en **una única base de datos segura** (una Google Sheet a la que solo accede su dueño).
+Aplicación web para que las secretarías del municipio carguen datos de contribuyentes en **una única base de datos**, alojada en el **servidor municipal**, con un Administrador que tiene la «llave maestra».
 
 ```
- Secretaría A ─┐
- Secretaría B ─┤   navegador         Google Apps Script         Google Sheet (privada)
- Secretaría C ─┼──► frontend/  ───►  backend/Code.gs     ───►   hojas «Registros» y «Usuarios»
- Secretaría D ─┤   (su servidor)     (valida y guarda)          + respaldo .xlsx diario en Drive
- Secretaría E ─┘
+ Secretaría A ─┐                       SERVIDOR MUNICIPAL (Windows)
+ Secretaría B ─┤   navegador     ┌──────────────────────────────────────────┐
+ Secretaría C ─┼──── https ─────►│ Red Central de Datos (Node.js)            │
+ Secretaría D ─┤                 │  · base de datos SQLite (un archivo)      │
+ Administrador ┘                 │  · historial encadenado (antimanipulación)│
+   (doble factor)                │  · respaldos diarios CIFRADOS ───────────►│ solo se abren con la
+                                 └──────────────────────────────────────────┘ llave privada del Administrador
 ```
 
-- **frontend/**: HTML + CSS + JS estáticos. Se suben tal cual a su servidor web (no requiere PHP, Node ni base de datos).
-- **backend/Code.gs**: API en Google Apps Script. Recibe los datos, **vuelve a validarlos** del lado del servidor, controla usuarios y permisos, y escribe en la planilla.
+| Carpeta | Qué es |
+|---|---|
+| `frontend/` | La interfaz (HTML, CSS, JS). La sirve el mismo servidor. |
+| `servidor/` | **Versión para el servidor municipal (recomendada).** Node.js sin librerías externas. Ver [`servidor/INSTALACION.md`](servidor/INSTALACION.md). |
+| `backend/Code.gs` | Versión anterior en Google Sheets, solo para pruebas. No tiene panel de Administración ni doble factor, y no se va a seguir actualizando. |
 
-## Funciones
+## Perfiles
 
-| | Perfil **Carga** | Perfil **Análisis** |
-|---|:-:|:-:|
-| Buscar fichas (DNI, CUIT/CUIL, partida inmueble o comercio) | ✓ | ✓ |
-| Cargar registros nuevos | ✓ | ✓ |
-| Sumar un teléfono, un nuevo domicilio o corregir un dato de una ficha existente | ✓ | ✓ |
-| Editar la última carga (hasta hacer una nueva) | ✓ | ✓ |
-| Ver números de carga / cantidad de cargas | — | ✓ |
-| Estadísticas y gráficos, con filtro por período | — | ✓ |
-| Ver la planilla completa | — | — (solo el administrador) |
+| | **Carga** | **Análisis** | **Administrador** |
+|---|:-:|:-:|:-:|
+| Buscar fichas (DNI, CUIT/CUIL, partida inmueble o comercio) | ✓ | ✓ | ✓ |
+| Cargar fichas nuevas y editar la última carga | ✓ | ✓ | ✓ |
+| Sumar un teléfono, un nuevo domicilio o corregir un dato | ✓ | ✓ | ✓ |
+| Ver teléfonos, mail y comentarios **completos** en las búsquedas | — (ocultos) | — (ocultos) | ✓ |
+| Ver números de carga | — | ✓ | ✓ |
+| Estadísticas y gráficos | — | ✓ | ✓ |
+| Panel de Administración: usuarios, barrios, actividad, integridad | — | — | ✓ |
+| Exportar la planilla completa (.xlsx) y abrir respaldos | — | — | ✓ (pide código de doble factor) |
+| Ingreso con doble factor (código del celular) | opcional* | opcional* | **obligatorio** |
+
+\* Se puede exigir a todos con `"dobleFactorParaTodos": true` en `servidor/config.json`.
+
+## Seguridad
+
+**Acceso**
+- **Contraseñas propias:** cada usuario recibe una contraseña temporal y en el primer ingreso elige la suya (mínimo 10 caracteres, con letras y números). Se guardan con *scrypt*, nunca en texto plano.
+- **Bloqueos por intentos fallidos:** 5 errores bloquean el usuario 15 minutos, y 20 errores desde una misma conexión la bloquean también.
+- **Doble factor para el Administrador:** usa Microsoft Authenticator o Google Authenticator.
+- **Sesiones:** vencen tras 60 minutos sin uso o 12 horas en total, y se cierran al cerrar la pestaña.
+
+**Protección de los datos**
+- **Datos ocultos:** quien no es Administrador ve los teléfonos (`11****4455`), el mail (`l***@mail.com`) y los comentarios ocultos. Reconoce la ficha, pero no se puede llevar la base.
+- **Búsquedas limitadas y registradas:**
+  - Solo por coincidencia exacta de DNI, CUIT/CUIL o partida; no se puede recorrer la base ni buscar por apellido.
+  - Cada búsqueda queda registrada.
+  - Hay un tope de 60 búsquedas por hora por usuario, configurable. Si se alcanza, aparece una alerta en el panel de Administración.
+
+**Antimanipulación**
+- **Historial encadenado:** cada alta o cambio de una ficha, de un usuario o de un ajuste crítico se guarda con la huella (SHA-256) del anterior.
+- **Verificación nocturna y en cada apertura del panel:** si alguien modifica el archivo de la base por fuera de la aplicación, el sistema lo detecta y lo muestra en rojo. Señala qué ficha, qué usuario o qué ajuste se tocó.
+- **Sello de referencia:** el navegador del Administrador guarda un «sello» (cantidad de eventos + huella). Si el historial se reescribe entero, el sello deja de coincidir y aparece la alerta.
+- **Nada se borra desde la aplicación:** la base rechaza borrar fichas y borrar o modificar el historial y el registro de accesos.
+
+**Respaldos cifrados**
+- Todas las noches se generan dos archivos: una planilla `.xlsx` y una copia exacta de la base.
+- Se cifran con la **llave pública** del Administrador. El servidor puede cifrar pero **no descifrar**: quien copie los respaldos no puede leerlos.
+- La **llave privada** se crea en el navegador del Administrador, queda protegida con una frase secreta y se guarda fuera del servidor (pendrive + copia en sobre cerrado).
+- Los respaldos se abren desde el panel, en la propia computadora del Administrador.
+
+**En el servidor**
+- **Carpetas protegidas:** el instalador deja las carpetas de datos, respaldos y la configuración accesibles solo para SYSTEM y los Administradores de Windows.
+- **Encabezados de seguridad:** la página impide que se ejecute código de otros sitios y que se la muestre dentro de otra página.
+- **Sin librerías externas:** no hay código de terceros que pueda filtrar datos.
+
+**Límite honesto:** quien administra el servidor Windows siempre podría, en última instancia, intervenir el sistema. Lo que el sistema garantiza es que:
+- una manipulación **queda en evidencia**;
+- los **respaldos robados no se pueden leer**;
+- cada acceso **queda registrado**.
+
+Conviene complementarlo con medidas organizativas: designación formal del responsable de la base, compromisos de confidencialidad y copia de la llave en sobre cerrado.
+
+## Cómo se carga (flujo para evitar duplicados)
+1. **Buscar** por DNI, CUIT/CUIL, Partida inmueble o Partida comercio.
+2. **Si la ficha existe**, *Actualizar esta ficha* → **Agregar un teléfono**, **Cargar un nuevo domicilio** o **Corregir o completar un dato**. Solo se habilita el campo que corresponde; el valor anterior queda en el historial.
+3. **Si no existe**, **Realizar nueva carga** (el dato buscado ya queda completado).
+
+No se pueden crear dos fichas con el mismo DNI o CUIT/CUIL. Si en una carga nueva se escribe uno existente, aparece en el centro de la pantalla una ventana con la ficha y las tres opciones.
 
 **Validación estricta en cada tecla.** Si se escribe algo fuera de formato, el carácter no se acepta, el campo se pone en rojo, tiembla, suena un aviso y se explica el error. Cada campo muestra arriba cómo se debe completar.
 
@@ -47,91 +102,37 @@ Aplicación web para que las secretarías del municipio carguen datos de contrib
 | Partida Municipal Comercio *(opcional)* | solo números, hasta 12 | `654321` | `12.345`, `12-345` |
 | Comentarios *(opcional)* | texto libre, hasta 500 caracteres | | |
 
-Los campos opcionales están al final del formulario (Datos complementarios y Comentarios) y no se reclaman al guardar.
+Al tocar **Guardar** con campos vacíos aparece *«Faltó cargar … ¿Querés guardar igual?»* con **Guardar** / **No guardar**. Con *No guardar* se vuelve al formulario con los campos faltantes en rojo.
 
-## Cómo se carga (flujo para evitar duplicados)
-1. **Buscar.** Arriba de todo está el buscador: por DNI, CUIT/CUIL, Partida inmueble o Partida comercio (coincidencia exacta).
-2. **Si la ficha existe**, se toca *Actualizar esta ficha* y una ventana pregunta qué hacer:
-   - **Agregar un teléfono**: se habilita solo el Teléfono celular 2 (o el 1, si estaba vacío).
-   - **Cargar un nuevo domicilio**: se habilitan solo Calle, Nro., Barrio y Piso/Depto. El domicilio anterior queda en el historial.
-   - **Corregir o completar un dato**: todo queda bloqueado y cada campo tiene un botón **Corregir** para habilitar solo ese.
-3. **Si no existe**, se toca **Realizar nueva carga**. El dato buscado ya aparece completado.
+> ⚠️ La lista de barrios que trae el sistema es **provisoria**. El Administrador la reemplaza por el listado oficial desde **Administración → Barrios** (un barrio por renglón).
 
-**No se pueden crear dos fichas con el mismo DNI o CUIT/CUIL.** Si en una carga nueva se escribe un DNI o un CUIT/CUIL que ya existe, aparece en el centro de la pantalla una ventana con la ficha existente y las mismas tres opciones. El servidor también lo controla.
-
-**Historial.** Cada cambio sobre una ficha queda registrado en la hoja **Historial**: fecha, usuario, secretaría, acción, campo, valor anterior y valor nuevo. Nada se pierde al reemplazar un domicilio o un teléfono.
-
-**Números de carga.** El perfil Carga no ve números de carga ni cuántas cargas hay en la base. El servidor directamente no le envía esos datos.
-
-## Lista de barrios
-Los barrios salen de la hoja **Barrios** de la planilla: una columna, un barrio por fila. Para agregar, corregir o quitar barrios se edita esa hoja, sin tocar el código; la app la lee cada vez que alguien inicia sesión.
-
-> ⚠️ El listado que trae `setup` es **provisorio** (unos pocos barrios de ejemplo). Hay que reemplazarlo por el **listado oficial** del municipio (Catastro / Planeamiento).
-
-
-Al tocar **Guardar** con campos vacíos aparece: *«Faltó cargar … ¿Querés guardar igual?»* con **Guardar** / **No guardar**. Con *No guardar* se vuelve al formulario con los campos faltantes en rojo.
+## Estadísticas
+- **Período:** botones rápidos (7 días, 30 días, Este mes, Este año, Todo) o fechas *Desde* / *Hasta*.
+- **Cargas por día o por mes:** hasta 62 días se muestran por día; en períodos más largos, por mes.
+- **Últimos 7 días:** hoy y los 6 días anteriores, sin importar el período elegido.
 
 ## Probarla ya (modo demo)
-
-Si `frontend/assets/config.js` tiene `API_URL: ''`, la app funciona en **modo demo**: los datos quedan en el navegador y trae datos de ejemplo para las estadísticas.
+Con `API_URL: ''` en `frontend/assets/config.js`, la app funciona sola en el navegador y trae datos de ejemplo:
 
 ```bash
 cd frontend && python3 -m http.server 8080
-# abrir http://localhost:8080 — usuarios: carga / analisis, contraseña: demo1234
+# abrir http://localhost:8080 — usuarios: carga, analisis o admin · contraseña demo1234
 # fichas de prueba para el buscador: DNI 20111222 y 25333444
 ```
 
-## Puesta en marcha (producción)
-
-### 1. Crear la base de datos y el backend
-1. Con la cuenta de Google que será **dueña de los datos**, crear una Google Sheet nueva (por ejemplo «Red Central de Datos»). **No compartirla.**
-2. En la planilla: **Extensiones → Apps Script**. Borrar el contenido y pegar `backend/Code.gs`. Guardar.
-3. En el editor elegir la función `setup` y tocar **Ejecutar**. Aceptar los permisos. Se crean las hojas `Registros` y `Usuarios`.
-4. **Implementar → Nueva implementación → Tipo: Aplicación web**
-   - *Ejecutar como:* **Yo**
-   - *Quién tiene acceso:* **Cualquier usuario** (el acceso real lo controla el login de la app)
-5. Copiar la URL que termina en `/exec`.
-
-### 2. Crear los usuarios
-Volver a la planilla y recargarla: aparece el menú **Red Central de Datos**.
-- **Crear usuario…** pide usuario, nombre, secretaría, perfil (1 = Carga, 2 = Análisis) y contraseña (mínimo 8 caracteres).
-- **Cambiar contraseña…** y **Activar / desactivar usuario…** para la administración diaria.
-
-La secretaría de cada registro se toma **del usuario que lo carga**, así no se puede cargar a nombre de otra secretaría.
-
-### 3. Publicar el frontend
-1. Editar `frontend/assets/config.js` y pegar la URL en `API_URL`.
-2. Subir el contenido de `frontend/` a su servidor (idealmente con **HTTPS**).
-
-### 4. Respaldo en .xlsx
-Menú **Red Central de Datos → Programar respaldo .xlsx diario**: todas las noches guarda una copia `.xlsx` en la carpeta privada «Respaldos Red Central de Datos» de su Drive. También se puede descargar en cualquier momento con *Archivo → Descargar → Microsoft Excel (.xlsx)*.
-
-### Actualizar el backend
-Después de modificar `Code.gs`: **Implementar → Administrar implementaciones → editar (lápiz) → Versión: Nueva versión**. Así la URL no cambia.
-
-Las columnas de la hoja `Registros` se ubican **por su nombre**, no por su posición. Si se agregan campos nuevos, el script agrega las columnas que falten al final de la hoja, sin tocar los datos existentes. Se pueden reordenar columnas o agregar columnas propias, siempre que no se renombren los encabezados que usa la app.
-
-## Estadísticas
-- **Período:** botones rápidos (7 días, 30 días, Este mes, Este año, Todo) o fechas *Desde* / *Hasta*. El total, los celulares, los mails, las secretarías y el vínculo se calculan sobre el período elegido.
-- **Cargas por día o por mes:** hasta 62 días se muestra por día; en períodos más largos, por mes.
-- **Últimos 7 días:** hoy y los 6 días anteriores, siempre, sin importar el período elegido.
-
-## Seguridad
-- La planilla no se comparte: el script corre con la cuenta del dueño y los usuarios nunca la ven. El perfil Análisis recibe solo totales, no datos personales.
-- Las contraseñas se guardan con *hash* + *salt* (nunca en texto plano). Tras 5 intentos fallidos el usuario queda bloqueado 15 minutos.
-- Las sesiones vencen a las 6 h y se cierran al cerrar la pestaña.
-- El servidor vuelve a validar todos los formatos (no alcanza con saltearse el navegador), controla que solo se edite la **última** carga de cada usuario y que cada actualización toque solo los campos de la acción elegida.
-- La búsqueda es solo por coincidencia exacta de DNI, CUIT/CUIL o partida: no se puede recorrer la base ni buscar por apellido.
-- Las hojas quedan protegidas contra edición de terceros.
+En el modo demo no hay servidor. El panel de Administración se puede recorrer, pero la exportación, los respaldos y el doble factor funcionan solo en el servidor municipal.
 
 ## Estructura
 ```
 frontend/
-  index.html          interfaz (login, carga, estadísticas)
-  assets/config.js    URL del backend
-  assets/app.js       lógica, validaciones, gráficos, modo demo
-  assets/styles.css   estilos
-  assets/logo.webp, favicon.png
-backend/
-  Code.gs             API + menú de administración (Google Apps Script)
+  index.html            interfaz (ingreso, carga, estadísticas, administración)
+  assets/app.js         lógica, validaciones, gráficos, cifrado de llaves (WebCrypto), modo demo
+  assets/styles.css     estilos
+servidor/
+  servidor.js           servidor web + API
+  lib/                  base de datos, seguridad, auditoría, respaldos, planillas .xlsx
+  herramientas/         crear-admin.js (primer Administrador / recuperación)
+  instalar-servicio.ps1 instalación en Windows como servicio
+  INSTALACION.md        guía para el área de Sistemas
+backend/Code.gs         versión en Google Sheets (solo pruebas, sin mantenimiento)
 ```
